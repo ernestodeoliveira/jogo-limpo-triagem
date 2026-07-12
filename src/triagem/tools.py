@@ -6,6 +6,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 EXPECTED_ITEM_IDS = [f"q{i}" for i in range(1, 10)]
+EXPECTED_SCALE_KEYS = ["0", "1", "2", "3"]
 
 
 class PGSIDataError(Exception):
@@ -17,11 +18,8 @@ class Question(BaseModel):
     text: str
 
 
-def load_pgsi_questions(path: str = "data/pgsi.json") -> list[Question]:
-    """Load and validate the PGSI items: exactly 9, ids q1..q9 in order, non-empty text.
-
-    Raises PGSIDataError with a clear message when the file is malformed.
-    """
+def _read_pgsi_data(path: str) -> dict:
+    """Read and parse the PGSI data file; raises PGSIDataError on I/O or JSON errors."""
     file = Path(path)
     if not file.is_file():
         raise PGSIDataError(f"PGSI data file not found: {path}")
@@ -29,6 +27,15 @@ def load_pgsi_questions(path: str = "data/pgsi.json") -> list[Question]:
         raw = json.loads(file.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise PGSIDataError(f"PGSI data file is not valid JSON: {exc}") from exc
+    return raw
+
+
+def load_pgsi_questions(path: str = "data/pgsi.json") -> list[Question]:
+    """Load and validate the PGSI items: exactly 9, ids q1..q9 in order, non-empty text.
+
+    Raises PGSIDataError with a clear message when the file is malformed.
+    """
+    raw = _read_pgsi_data(path)
     items = raw.get("items") if isinstance(raw, dict) else None
     if not isinstance(items, list):
         raise PGSIDataError("PGSI data must contain an 'items' list")
@@ -44,6 +51,24 @@ def load_pgsi_questions(path: str = "data/pgsi.json") -> list[Question]:
             raise PGSIDataError(f"item '{expected_id}' has empty or missing text")
         questions.append(Question(id=item_id, text=text))
     return questions
+
+
+def load_pgsi_scale(path: str = "data/pgsi.json") -> dict[str, str]:
+    """Load and validate the response scale: keys exactly "0".."3", non-empty labels.
+
+    Raises PGSIDataError with a clear message when the file is malformed.
+    """
+    raw = _read_pgsi_data(path)
+    scale = raw.get("scale") if isinstance(raw, dict) else None
+    if not isinstance(scale, dict):
+        raise PGSIDataError("PGSI data must contain a 'scale' dict")
+    if sorted(scale) != EXPECTED_SCALE_KEYS:
+        raise PGSIDataError(f"PGSI scale must have keys 0..3, found {sorted(scale)}")
+    for key in EXPECTED_SCALE_KEYS:
+        label = scale[key]
+        if not isinstance(label, str) or not label.strip():
+            raise PGSIDataError(f"scale value for '{key}' has empty or missing label")
+    return {key: scale[key] for key in EXPECTED_SCALE_KEYS}
 
 
 class ScoreResult(BaseModel):

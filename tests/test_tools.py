@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from triagem.tools import PGSIDataError, Question, load_pgsi_questions
+from triagem.tools import (
+    PGSIDataError,
+    Question,
+    load_pgsi_questions,
+    load_pgsi_scale,
+)
 
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "pgsi.json"
 
@@ -68,3 +73,32 @@ def test_invalid_json_raises(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises(PGSIDataError, match="not found"):
         load_pgsi_questions(str(tmp_path / "absent.json"))
+
+
+def test_load_scale_valid():
+    scale = load_pgsi_scale(str(DATA_PATH))
+    assert scale == {
+        "0": "Nunca",
+        "1": "Às vezes",
+        "2": "Na maioria das vezes",
+        "3": "Quase sempre",
+    }
+
+
+def test_load_scale_missing_key_raises(tmp_path):
+    data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+    del data["scale"]["3"]
+    with pytest.raises(PGSIDataError, match="keys 0..3"):
+        load_pgsi_scale(_write(tmp_path, json.dumps(data)))
+
+
+def test_load_scale_empty_label_raises(tmp_path):
+    data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+    data["scale"]["2"] = "  "
+    with pytest.raises(PGSIDataError, match="empty or missing label"):
+        load_pgsi_scale(_write(tmp_path, json.dumps(data)))
+
+
+def test_load_scale_missing_file_raises(tmp_path):
+    with pytest.raises(PGSIDataError, match="not found"):
+        load_pgsi_scale(str(tmp_path / "absent.json"))
