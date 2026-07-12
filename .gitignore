@@ -1,1 +1,15 @@
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+dist/
+
+# secrets
+.env
+
+# generated reports (a sample added later stays versioned)
+reports/*
+!reports/sample*
