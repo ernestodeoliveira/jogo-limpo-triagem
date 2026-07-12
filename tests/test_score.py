@@ -1,5 +1,6 @@
 import pytest
 
+from triagem.nodes import score_to_band
 from triagem.tools import ScoreResult, compute_pgsi_score
 
 
@@ -46,3 +47,25 @@ def test_value_out_of_range_raises(bad):
     answers["q9"] = bad
     with pytest.raises(ValueError, match="q9"):
         compute_pgsi_score(answers)
+
+
+@pytest.mark.parametrize(
+    ("score", "band"),
+    [
+        (0, "sem_risco"),
+        (1, "baixo"),
+        (2, "baixo"),
+        (3, "moderado"),
+        (7, "moderado"),
+        (8, "alto"),
+        (27, "alto"),
+    ],
+)
+def test_severity_bands(score, band):
+    assert score_to_band(score) == band
+
+
+@pytest.mark.parametrize("bad", [-1, 28, "3", 2.5, True, None])
+def test_severity_band_invalid_score_raises(bad):
+    with pytest.raises(ValueError):
+        score_to_band(bad)
