@@ -44,3 +44,31 @@ def load_pgsi_questions(path: str = "data/pgsi.json") -> list[Question]:
             raise PGSIDataError(f"item '{expected_id}' has empty or missing text")
         questions.append(Question(id=item_id, text=text))
     return questions
+
+
+class ScoreResult(BaseModel):
+    score: int  # 0..27
+    answers: dict[str, int]
+
+
+def compute_pgsi_score(answers: dict[str, int]) -> ScoreResult:
+    """Controlled pure scoring: requires exactly q1..q9 with int values 0..3.
+
+    Raises ValueError on any violation; never returns a partial score. No I/O.
+    """
+    missing = [item_id for item_id in EXPECTED_ITEM_IDS if item_id not in answers]
+    if missing:
+        raise ValueError(f"missing answers for: {', '.join(missing)}")
+    extra = sorted(key for key in answers if key not in EXPECTED_ITEM_IDS)
+    if extra:
+        raise ValueError(f"unexpected answer keys: {', '.join(extra)}")
+    for item_id in EXPECTED_ITEM_IDS:
+        value = answers[item_id]
+        if type(value) is not int or not 0 <= value <= 3:
+            raise ValueError(
+                f"answer '{item_id}' must be an int between 0 and 3, got {value!r}"
+            )
+    return ScoreResult(
+        score=sum(answers[item_id] for item_id in EXPECTED_ITEM_IDS),
+        answers=dict(answers),
+    )
