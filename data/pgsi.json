@@ -1,0 +1,23 @@
+{
+  "instrument": "PGSI",
+  "title_pt": "Índice de gravidade de problemas com apostas",
+  "stem": "Pensando nos últimos 12 meses...",
+  "scale": {
+    "0": "Nunca",
+    "1": "Às vezes",
+    "2": "Na maioria das vezes",
+    "3": "Quase sempre"
+  },
+  "source": "Moura CC, Spritzer DT, Machado RM, Borghi RN, Gabioneta NS, Andrade AM, Tavares H. Cross-cultural adaptation and content validity of the PGSI into Brazilian Portuguese. Rev Saúde Pública. 2026;60:e27. doi:10.11606/s1518-8787.2026060007368. Instrumento original: Ferris J, Wynne H. The Canadian Problem Gambling Index (2001), de uso livre com atribuição.",
+  "items": [
+    {"id": "q1", "text": "Você apostou mais do que realmente poderia perder?"},
+    {"id": "q2", "text": "Ainda pensando nos últimos 12 meses, você precisou apostar quantias cada vez maiores de dinheiro para ter a mesma sensação de prazer?"},
+    {"id": "q3", "text": "Depois de ter apostado, você retorna outro dia para tentar recuperar o dinheiro perdido?"},
+    {"id": "q4", "text": "Você pediu dinheiro emprestado ou vendeu alguma coisa para conseguir dinheiro para apostar?"},
+    {"id": "q5", "text": "Você achou que poderia ter algum problema com apostas?"},
+    {"id": "q6", "text": "Apostar já lhe causou algum problema de saúde, como estresse ou ansiedade?"},
+    {"id": "q7", "text": "As pessoas já lhe criticaram por apostar, ou disseram que você tinha problemas com apostar, independentemente de você achar que era verdade ou não?"},
+    {"id": "q8", "text": "As suas apostas já causaram algum problema financeiro para você ou sua família?"},
+    {"id": "q9", "text": "Você já se sentiu culpado(a) pela maneira como você aposta ou pelo que acontece quando você aposta?"}
+  ]
+}
