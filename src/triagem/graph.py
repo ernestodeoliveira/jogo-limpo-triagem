@@ -3,6 +3,7 @@
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from triagem.fakes import get_llm
 from triagem.nodes import (
     QuestionPayload,
     abort_node,
@@ -34,8 +35,11 @@ def read_interrupt_payload(result: dict) -> QuestionPayload | None:
 def build_agent(llm=None, checkpointer=None):
     """Compile the triage graph with a checkpointer (required by interrupt, D-09).
 
-    The llm parameter is accepted but unused until T-10 wires classify_intent.
+    When llm is None the factory get_llm() resolves it from the environment
+    (FakeLLM under TRIAGE_FAKE_LLM=1). The llm is accepted but unused until
+    T-10 wires classify_intent.
     """
+    llm = llm if llm is not None else get_llm()
     builder = StateGraph(TriageState)
     builder.add_node("safety_gate", safety_gate)
     builder.add_node("ask_question", ask_question)
