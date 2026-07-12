@@ -49,3 +49,9 @@ Formato curto: Decisão / Racional / Trade-off aceito. Alimenta a seção "princ
 **Decisão**: toda saída carrega o disclaimer de triagem educacional; tom acolhedor e neutro; encaminhamentos fixos (Autoexclusão gov.br, CVV 188, CAPS/SUS).
 **Racional**: coerência com as restrições do produto real e postura responsável no domínio.
 **Trade-off**: nenhum.
+
+## D-09: Opção A confirmada: multi-turno com interrupt() e Command(resume=...)
+
+**Decisão**: adotar em definitivo a opção A da ARCHITECTURE §4 (`interrupt()` dentro de `ask_question`, retomada via `Command(resume=...)`, checkpointer obrigatório); a opção B (um invoke por turno) fica descartada.
+**Racional**: o spike `tests/test_interrupt_spike.py` (T-07, langgraph 1.2.9) comprovou dentro do timebox de 2h: `result["__interrupt__"]` é uma sequência (lista na 1.2.9) de `Interrupt` com `.value` (payload) e `.id`; `Command(resume=texto)` retoma o interrupt pendente preservando tipo e ordem; 2 ciclos completos de pausa e retomada funcionam; na retomada o nó reexecuta desde o início (contador `[0, 0, 1, 1]` em 2 perguntas), sem duplicar escritas de estado; threads com `thread_id` distintos são isolados no mesmo app compilado.
+**Trade-off**: nós que chamam `interrupt()` precisam ser idempotentes antes da pausa, porque efeitos colaterais pré-interrupt duplicam na retomada (mitigação do R-02: `ask_question` só monta payload, efeitos ficam em `validate_answer`); o acesso ao payload fica isolado em um helper único (`read_interrupt_payload`, mitigação do R-03).
