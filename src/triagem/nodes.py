@@ -26,6 +26,21 @@ ABORT_MESSAGE = (
     "agora, o CVV atende pelo telefone 188, todos os dias, 24 horas."
 )
 
+INFO_MESSAGE = (
+    "Este é o PGSI (Índice de gravidade de problemas com apostas), um "
+    "questionário de triagem com 9 perguntas sobre os últimos 12 meses. Cada "
+    "resposta usa uma escala de 0 a 3 (0 nunca, 1 às vezes, 2 na maioria das "
+    "vezes, 3 quase sempre). O resultado indica uma faixa educacional de risco "
+    "e não é um diagnóstico. Nada além das suas 9 respostas é usado no "
+    "resultado. Quando quiser começar, é só dizer."
+)
+
+FALLBACK_MESSAGE = (
+    "Eu consigo ajudar apenas com a triagem educacional sobre o uso de apostas "
+    "(questionário PGSI). Se quiser, podemos começar agora: são 9 perguntas "
+    "rápidas sobre os últimos 12 meses."
+)
+
 
 class QuestionPayload(TypedDict):
     """Contract of the interrupt payload delivered by ask_question."""
@@ -112,6 +127,16 @@ def route_after_validation(
 def abort_node(state: TriageState) -> dict:
     """Polite closure after repeated invalid answers, with support resources."""
     return {"final_answer": ABORT_MESSAGE, "error": "max_invalid_attempts"}
+
+
+def info_node(state: TriageState) -> dict:
+    """Static explanation of the test, the scale and privacy (RF-02)."""
+    return {"final_answer": INFO_MESSAGE}
+
+
+def fallback_node(state: TriageState) -> dict:
+    """Gentle redirect to the agent's purpose for off-domain messages (RF-02)."""
+    return {"final_answer": FALLBACK_MESSAGE}
 
 
 def score_node(state: TriageState) -> dict:
