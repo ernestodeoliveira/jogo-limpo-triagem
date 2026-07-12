@@ -61,6 +61,34 @@ def test_invalid_answer_repeats_same_question(app, config):
     assert result["answers"] == {}
 
 
+def test_attempts_reset_after_valid_answer(app, config):
+    app.invoke(initial_state("quero começar o teste"), config)
+
+    # Two invalid answers on q1: the counter accumulates.
+    app.invoke(Command(resume="banana"), config)
+    result = app.invoke(Command(resume="talvez"), config)
+    assert result["attempts"] == 2
+
+    # A valid answer advances to q2 and resets the counter.
+    result = app.invoke(Command(resume="2"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["question_id"] == "q2"
+    assert result["attempts"] == 0
+
+    # One invalid on q2 counts from zero; 2 + 1 must not reach the abort limit.
+    result = app.invoke(Command(resume="sei la"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["question_id"] == "q2"
+    assert result["attempts"] == 1
+
+    # The session still completes from here.
+    for reply in ["0"] * 8:
+        result = app.invoke(Command(resume=reply), config)
+    assert read_interrupt_payload(result) is None
+    assert result["score"] == 2
+    assert result["severity_band"] == "baixo"
+
+
 def test_abort_after_three_invalid_attempts(app, config):
     result = app.invoke(initial_state("quero começar o teste"), config)
     for reply in ["banana", "talvez", "nao sei dizer"]:
