@@ -174,3 +174,95 @@ outra coisa importante eh que seja realizada auditoria de supply chain
 4. Adicionado `tests/test_smoke.py` (não pedido explicitamente): necessário porque o pytest retorna código de saída 5 quando não coleta nenhum teste, o que quebraria o critério "suíte verde" do T-01.
 5. Código review, security review e auditoria de supply chain (esta última pedida durante a execução) rodados antes de cada PR, com um achado corrigido (tetos de versão no `pyproject.toml`) antes do PR #2.
 
+### I-002: Implementação do lote do dia 14/07, T-07 a T-10 (Claude Code, 12/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário
+PGSI (9 itens), construído com LangGraph. O planejamento está concluído e o lote do dia
+13/07 (T-01 a T-06) já foi implementado e mergeado (PRs #2 e #3): projeto uv em Python
+3.11, data/pgsi.json com os 9 itens literais, TriageState, load_pgsi_questions,
+compute_pgsi_score e score_to_band. 38 testes verdes offline. Nenhum grafo, interrupt()
+ou LLM existe ainda.
+docs/PLAN.md é a fonte de verdade. O backlog do dia 14/07 é "grafo core e ciclo com
+interrupt (decisão A/B)": T-07 a T-10. A decisão A/B ainda não foi tomada: opção A
+(interrupt() dentro de ask_question, retomado via Command(resume=...), padrão
+idiomático de human-in-the-loop) é a principal; opção B (invoke por mensagem, mesmo
+thread_id, roteando por phase) é o plano B se A não estabilizar em 2h de spike
+(ARCHITECTURE.md §4, PLAN.md §4 risco R-01). Riscos relacionados a monitorar durante
+a implementação: R-02 (reexecução do nó ao retomar duplicando efeitos colaterais,
+mitigado por ask_question idempotente) e R-03 (drift de API do LangGraph no formato
+de __interrupt__/Command).
+Requisitos inegociáveis: testes sempre executáveis offline e sem chave de API
+(TRIAGE_FAKE_LLM=1); nenhum segredo versionado; Conventional Commits 1.0.0 em inglês;
+branches curtas integradas via pull request na main; documentação em PT-BR; código e
+identificadores em inglês; não usar travessão longo (—) em nenhum texto gerado. Antes
+de cada pull request, rodar code review (skill superpowers:requesting-code-review,
+agente superpowers:code-reviewer) e security review (skill security-review); rodar
+também auditoria de supply chain se pyproject.toml ou uv.lock mudarem.
+Stack: Python 3.11, uv, langgraph>=1.2.6,<2, langchain-openai>=1.3,<2, pydantic>=2,<3,
+pytest>=8,<10.
+
+# Papel
+Atue como engenheiro de software sênior especialista em LangGraph e arquitetura de
+agentes, executando o backlog do docs/PLAN.md exatamente na ordem planejada. Nesta
+sessão você implementa APENAS o lote do dia 14/07 (T-07 a T-10). Não implemente
+parsing.py, o gate de crise nem qualquer tarefa dos dias seguintes (T-11 em diante).
+
+# Tarefa
+Antes de começar: confirme que os PRs #2 e #3 estão mergeados, atualize a main local e
+rode uv run pytest para confirmar a base verde (38 testes).
+
+1. T-07 spike de interrupt()/Command(resume=...): grafo mínimo com InMemorySaver,
+   validar o formato de __interrupt__, 2 ciclos completos de pausa e retomada.
+   Timebox rígido de 2h. Se estável dentro do prazo: adote a opção A e registre a
+   decisão em docs/DECISIONS.md com a evidência do spike. Se instável ao fim do
+   timebox: pare, resuma o que falhou e pergunte antes de adotar a opção B, mesmo
+   ela já estando pré-aprovada como plano B no PLAN.md, porque muda a forma de
+   graph.py e do CLI pelo resto do projeto. Teste em
+   tests/test_interrupt_spike.py. Commit: test(graph): add interrupt resume spike
+   and record decision. Abra e mergeie este PR isoladamente antes de seguir, pois
+   T-08 depende do resultado.
+2. T-08 graph.py: build_agent(llm) com safety_gate stub (sempre "ok" por enquanto),
+   ask_question idempotente (só monta o payload e pausa, no formato da opção
+   decidida no T-07), validate_answer aceitando apenas dígitos nesta fase, arestas
+   condicionais do ciclo, compile com checkpointer.
+3. T-09 fakes.py: FakeClassifier e FakeAnswerParser (mesma interface
+   with_structured_output/invoke) e a factory get_llm() que respeita
+   TRIAGE_FAKE_LLM.
+4. T-10 classify.py: IntentResult (Pydantic, Literal) + classify_intent_node e as
+   rotas fora_dominio para fallback e duvida para info_node.
+
+Regras para T-08 a T-10: um commit convencional por tarefa (mensagens sugeridas na
+coluna "Commit sugerido" do backlog); teste da coluna "Teste" escrito antes ou junto
+de cada implementação (TDD); uv run pytest verde sem .env ao final de cada tarefa.
+Agrupe o trabalho em dois pull requests: primeiro só o T-07 e, após o merge dele,
+T-08 a T-10 juntos, cada um em branch curta criada da main atualizada, com code
+review e security review antes de cada gh pr create.
+Registre esta sessão em docs/prompts.md como I-002 (prompt e resultado), no padrão
+do arquivo.
+
+# Formato
+Ao final, imprima: qual decisão A/B foi tomada e por quê, o que foi implementado por
+tarefa, a saída resumida de uv run pytest (verde, sem .env), os links dos pull
+requests criados e qualquer desvio do planejado com justificativa. Pare antes de
+qualquer tarefa do dia 15 (T-11 em diante: parsing.py, gate de crise).
+```
+
+Nenhum complemento foi enviado durante a execução. Duas decisões foram tomadas via AskUserQuestion na fase de planejamento: a escala de respostas do payload do interrupt passou a vir de um novo helper `load_pgsi_scale` em `tools.py` (em vez de hardcode em `nodes.py` ou payload sem escala) e a confirmação da opção A entrou como nova entrada D-09 em DECISIONS.md (em vez de editar a D-02).
+
+**Resultado**: decisão A/B resolvida a favor da opção A, registrada como D-09 com a evidência do spike; T-07 a T-10 implementados via TDD (teste vermelho pelo motivo certo, implementação mínima, suíte verde), um commit convencional por tarefa, em dois pull requests mergeados na main:
+
+- **PR #4** "test(graph): add interrupt resume spike and record decision" (T-07): o spike `tests/test_interrupt_spike.py`, em grafo mínimo dedicado com `InMemorySaver`, comprovou na langgraph 1.2.9 o formato de `__interrupt__` (sequência de `Interrupt` com `.value` e `.id`), 2 ciclos completos de pausa e retomada com `Command(resume=...)`, a reexecução do nó desde o início na retomada (contador `[0, 0, 1, 1]`, evidência do R-02) sem duplicar escritas de estado e o isolamento por `thread_id`. Estável na primeira execução, muito dentro do timebox de 2h. Antes do PR: code review (aprovado; um ajuste menor de redação na D-09) e security review (sem achados).
+- **PR #5** "feat: graph core with interrupt cycle, offline fakes and intent routing" (T-08 a T-10): `graph.py` com `build_agent(llm)`, `read_interrupt_payload` (helper único do payload, R-03) e o ciclo `ask_question` (idempotente antes do interrupt) -> `validate_answer` (só dígitos 0 a 3, controla `attempts`, aborta na 3ª inválida) -> `score_node` -> `band_node` -> `finalize`; `load_pgsi_scale` em `tools.py`; `fakes.py` com `FakeClassifier`, `FakeAnswerParser`, `FakeLLM` (despacho pelos campos do schema) e `get_llm()` respeitando `TRIAGE_FAKE_LLM` (senão `ChatOpenAI` com endpoint local, Q6); `conftest.py` com modo offline autouse; `classify.py` com `IntentResult`, prompt estático PT-BR (conteúdo do usuário como dado, não instrução) e rotas `fora_dominio` -> `fallback_node`, `duvida` -> `info_node`, `iniciar`/`responder` -> `ask_question`. Antes do PR: code review (2 itens Important resolvidos: teste do reset de `attempts` com checagem de mutação e esta entrada I-002) e security review (sem achados). Sem auditoria de supply chain (dependências inalteradas).
+
+`uv run pytest` verde ao final de cada tarefa e da sessão (87 testes, sem `.env`, sem chave de API).
+
+**Desvios do planejado, com justificativa**:
+1. `load_pgsi_scale` em `tools.py`, fora da lista de arquivos do T-08 no PLAN.md: mantém `data/pgsi.json` como fonte única do instrumento validado (D-07) em vez de duplicar a escala em `nodes.py`; aprovado via AskUserQuestion.
+2. Registro da decisão A/B como nova entrada D-09 em vez de editar a D-02: preserva o log de decisões append-only; aprovado via AskUserQuestion.
+3. Commit extra `test(graph): cover attempts reset across questionnaire items` no PR #5, por achado do code review: sem ele, remover o reset de `attempts` manteria a suíte verde; a detecção foi validada com checagem de mutação.
+4. Testes além da coluna Teste do backlog (payload da primeira pergunta, re-pergunta em resposta inválida, abort após 3 tentativas, 4 testes de `load_pgsi_scale`, 31 casos de fakes): decorrência do TDD e do critério de re-pergunta do R-01 apontado no review do PR #4.
+5. Os dois pull requests mergeados na própria sessão via `gh pr merge`, seguindo o padrão registrado na I-001.
+
