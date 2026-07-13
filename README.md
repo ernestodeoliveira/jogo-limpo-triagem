@@ -123,6 +123,7 @@ Racional completo em `docs/DECISIONS.md`.
 - Nenhum dado pessoal real: sessões identificadas apenas por `thread_id` aleatório.
 - Entradas do usuário tratadas como dados, nunca interpoladas em prompts de sistema (mitigação de prompt injection).
 - Respostas fora do formato são rejeitadas com re-pergunta (máx. 3 tentativas por item).
+- Tracing LangSmith/LangChain desabilitado por padrão pelo CLI (`LANGSMITH_TRACING`, `LANGCHAIN_TRACING_V2`, `LANGSMITH_TRACING_V2` e `LANGCHAIN_TRACING`), mesmo que já estejam definidas no shell ou no `.env`: nenhuma conversa é enviada para a nuvem sem escolha explícita. Para habilitar tracing, defina `TRIAGE_ALLOW_TRACING=1`.
 
 ## 12. Referências e atribuição
 

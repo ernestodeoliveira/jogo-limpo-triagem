@@ -14,6 +14,7 @@ def offline_env(monkeypatch, tmp_path):
     monkeypatch.setenv("TRIAGE_FAKE_LLM", "1")
     monkeypatch.delenv("TRIAGE_LLM_BASE_URL", raising=False)
     monkeypatch.delenv("TRIAGE_LLM_MODEL", raising=False)
+    monkeypatch.delenv("TRIAGE_ALLOW_TRACING", raising=False)
     monkeypatch.setenv("TRIAGE_REPORTS_DIR", str(tmp_path / "reports"))
 
 

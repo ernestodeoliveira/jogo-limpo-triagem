@@ -11,6 +11,7 @@ def test_initial_state_defaults():
     assert state["phase"] is None
     assert state["current_question"] == 0
     assert state["attempts"] == 0
+    assert state["retry_cycles"] == 0
     assert state["answers"] == {}
     assert state["crisis_flag"] is False
     assert state["score"] is None

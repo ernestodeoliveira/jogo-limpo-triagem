@@ -7,12 +7,21 @@ canonical read_interrupt_payload helper (risk R-03).
 
 import json
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from langgraph.types import Command
 
-from triagem.graph import read_interrupt_payload
-from triagem.nodes import ABORT_MESSAGE, BAND_EXPLANATIONS, RETRY_HINT, interpret_offer_reply
+from triagem.fakes import FakeLLM
+from triagem.graph import build_agent, read_interrupt_payload
+from triagem.nodes import (
+    ABORT_MESSAGE,
+    BAND_EXPLANATIONS,
+    MAX_RETRY_CYCLES,
+    RETRY_HINT,
+    interpret_offer_reply,
+    route_after_validation,
+)
 from triagem.state import initial_state
 from triagem.tools import DISCLAIMER, load_pgsi_questions, load_pgsi_scale
 
@@ -330,3 +339,105 @@ def test_full_triage(app, config):
     data = json.loads(md.with_suffix(".json").read_text(encoding="utf-8"))
     assert data["score"] == 15
     assert data["answers"]["q9"] == 3
+
+
+class CountingLLM:
+    """Wraps FakeLLM and records the schema name of every LLM invocation.
+
+    Distinguishes IntentResult (one call at session start, D-09) from
+    AnswerValue (the parser fallback), so tests can assert the fallback was
+    never reached without a production-code call counter (A-03/O-02).
+    """
+
+    def __init__(self):
+        self.schema_calls = []
+        self._inner = FakeLLM()
+
+    def with_structured_output(self, schema, **kwargs):
+        runnable = self._inner.with_structured_output(schema, **kwargs)
+        calls = self.schema_calls
+        name = getattr(schema, "__name__", repr(schema))
+
+        class _Counting:
+            def invoke(self, input, config=None):
+                calls.append(name)
+                return runnable.invoke(input, config=config)
+
+        return _Counting()
+
+
+def test_overlong_answer_counts_attempt_without_llm_call():
+    llm = CountingLLM()
+    app = build_agent(llm)
+    config = {"configurable": {"thread_id": uuid4().hex}}
+
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    baseline = list(llm.schema_calls)
+
+    result = app.invoke(Command(resume="x" * 301), config)
+
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["question_id"] == "q1"
+    assert payload["hint"] == RETRY_HINT
+    assert result["attempts"] == 1
+    assert llm.schema_calls == baseline
+
+
+def test_answer_at_length_limit_still_reaches_parser():
+    llm = CountingLLM()
+    app = build_agent(llm)
+    config = {"configurable": {"thread_id": uuid4().hex}}
+
+    app.invoke(initial_state("quero começar o teste"), config)
+    app.invoke(Command(resume="y" * 300), config)
+
+    assert llm.schema_calls.count("AnswerValue") == 1
+
+
+def test_overlong_crisis_message_still_wins(app, config):
+    app.invoke(initial_state("quero começar o teste"), config)
+    result = app.invoke(Command(resume="quero morrer " + "x" * 400), config)
+
+    assert result["crisis_flag"] is True
+    assert "188" in result["final_answer"]
+
+
+def test_route_after_validation_aborts_when_retry_cycles_exhausted():
+    exhausted_state = {
+        **initial_state("x"),
+        "attempts": 3,
+        "retry_cycles": MAX_RETRY_CYCLES,
+    }
+    assert route_after_validation(exhausted_state) == "abort_node"
+
+    not_yet_state = {
+        **initial_state("x"),
+        "attempts": 3,
+        "retry_cycles": MAX_RETRY_CYCLES - 1,
+    }
+    assert route_after_validation(not_yet_state) == "retry_offer"
+
+
+def test_sixth_retry_cycle_aborts_politely(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+
+    for cycle in range(MAX_RETRY_CYCLES):
+        for reply in ["banana", "talvez", "nao sei dizer"]:
+            result = app.invoke(Command(resume=reply), config)
+        payload = read_interrupt_payload(result)
+        assert payload is not None and payload["kind"] == "retry_offer"
+
+        result = app.invoke(Command(resume="tentar de novo"), config)
+        assert result["retry_cycles"] == cycle + 1
+        payload = read_interrupt_payload(result)
+        assert payload is not None and payload["kind"] == "question"
+
+    for reply in ["banana", "talvez", "nao sei dizer"]:
+        result = app.invoke(Command(resume=reply), config)
+
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["final_answer"] == ABORT_MESSAGE
+    assert result["error"] == "max_invalid_attempts"
+    assert result["score"] is None

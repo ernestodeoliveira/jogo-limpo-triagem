@@ -1,5 +1,7 @@
 """Tests for the interactive CLI session (T-17)."""
 
+import os
+
 from triagem.cli import main, render_offer, render_payload, render_question
 
 HAPPY_REPLIES = ["0", "1", "2", "3", "0", "1", "2", "3", "3"]  # PGSI score 15
@@ -104,3 +106,45 @@ def test_main_unexpected_exception_is_caught_gracefully(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "Erro inesperado" in captured.out
+
+
+ALL_TRACING_ENV_VARS = (
+    "LANGSMITH_TRACING",
+    "LANGCHAIN_TRACING_V2",
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING",
+)
+
+
+def test_main_disables_tracing_env_by_default(monkeypatch):
+    monkeypatch.delenv("TRIAGE_ALLOW_TRACING", raising=False)
+    for var in ALL_TRACING_ENV_VARS:
+        monkeypatch.setenv(var, "true")
+
+    def raise_eof(*args):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", raise_eof)
+
+    exit_code = main()
+
+    assert exit_code == 0
+    for var in ALL_TRACING_ENV_VARS:
+        assert os.environ[var] == "false"
+
+
+def test_main_keeps_tracing_env_on_explicit_opt_in(monkeypatch):
+    monkeypatch.setenv("TRIAGE_ALLOW_TRACING", "1")
+    for var in ALL_TRACING_ENV_VARS:
+        monkeypatch.setenv(var, "true")
+
+    def raise_eof(*args):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", raise_eof)
+
+    exit_code = main()
+
+    assert exit_code == 0
+    for var in ALL_TRACING_ENV_VARS:
+        assert os.environ[var] == "true"

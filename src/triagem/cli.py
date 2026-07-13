@@ -1,11 +1,24 @@
 """Interactive CLI session for the PGSI triage agent (T-17)."""
 
+import os
 from uuid import uuid4
 
 from langgraph.types import Command
 
 from triagem.graph import build_agent, initial_state, read_interrupt_payload
 from triagem.nodes import OfferPayload, QuestionPayload
+
+TRACING_ENV_VARS = (
+    "LANGSMITH_TRACING",
+    "LANGCHAIN_TRACING_V2",
+    # langsmith.utils.get_env_var resolves the effective tracing flag by
+    # checking LANGSMITH_TRACING_V2 before LANGCHAIN_TRACING_V2, and both
+    # before LANGSMITH_TRACING/LANGCHAIN_TRACING: every name in this
+    # precedence chain must be neutralized, or a pre-existing
+    # LANGSMITH_TRACING_V2=true in the operator's shell silently wins.
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING",
+)
 
 WELCOME = (
     "Olá! Sou o agente de triagem do Jogo Limpo Lab. Aplico o questionário "
@@ -26,6 +39,18 @@ def load_dotenv_if_available() -> None:
     except ImportError:
         return
     load_dotenv()
+
+
+def disable_tracing_by_default() -> None:
+    """Neutralize LangSmith/LangChain tracing unless explicitly opted in (A-01).
+
+    Runs after load_dotenv_if_available() so a .env file cannot silently
+    re-enable tracing either; TRIAGE_ALLOW_TRACING=1 is the only opt-in.
+    """
+    if os.environ.get("TRIAGE_ALLOW_TRACING") == "1":
+        return
+    for var in TRACING_ENV_VARS:
+        os.environ[var] = "false"
 
 
 def render_question(payload: QuestionPayload) -> str:
@@ -60,6 +85,7 @@ def main() -> int:
     gracefully like the config-error and EOF/interrupt cases already do.
     """
     load_dotenv_if_available()
+    disable_tracing_by_default()
     try:
         app = build_agent()  # get_llm() resolve fake/real pelo ambiente
     except RuntimeError as exc:  # envs do endpoint ausentes no modo real
