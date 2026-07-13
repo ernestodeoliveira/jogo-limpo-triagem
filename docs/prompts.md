@@ -618,3 +618,25 @@ Percorreu as 9 perguntas, calculou score 15/faixa alto e gravou o relatório com
 6. Testes além dos nomeados no backlog do T-18 (`test_report_node_honors_reports_dir_env` chamando `report_node` diretamente, e as asserções `report_path is None` adicionadas em `test_crisis_mid_questionnaire`/`test_abort_after_three_invalid_attempts`/`test_duvida_reaches_info_node`/`test_fora_dominio_reaches_fallback_node`): decorrência da tarefa T-18 conforme especificada no prompt, mas com uma correção de rota durante a revisão de qualidade (dois testes novos que duplicavam sequências de invoke inteiras foram consolidados como asserções extras nos testes já existentes, em vez de manter testes separados).
 7. Os dois pull requests mergeados dentro da própria sessão via `gh pr merge`, a pedido do usuário (decisão via AskUserQuestion registrada acima).
 
+### I-005: Implementação de C-01 a C-03 do CI_PLAN.md (Claude Code, 13/07)
+
+```text
+implementa o C-01 e C-02 do CI_PLAN.md
+```
+
+Complemento enviado durante a execução:
+
+```text
+continua, cria o PR quando terminar
+```
+
+**Resultado**: C-01, C-02 e C-03 do backlog de `docs/CI_PLAN.md` implementados, em worktree isolado por branch, com code review e security review antes do PR:
+
+- **PR #11** "ci: add GitHub Actions workflow and status badge" (C-01 e C-02, dois commits): `.github/workflows/ci.yml` novo (job `tests`, gatilhos `pull_request`/`push` em `main`/`workflow_dispatch`, `permissions: contents: read`, `concurrency` com cancelamento, `actions/checkout@v7.0.0` e `astral-sh/setup-uv@v8.3.2` pinados por SHA de commit completo, uv fixado em `0.10.2`, Python 3.11, `uv sync --locked` + `uv run --no-sync pytest`, sem env/secret); badge de CI adicionado ao topo do `README.md`. Antes do PR: code review (agente `superpowers:code-reviewer`, sem achados Critical/Important; SHA dos dois pins verificados contra a API do GitHub e conferidos como corretos) e security review (skill `security-review`, sem achados: gatilho `pull_request` sem privilégio elevado em fork, nenhuma interpolação de contexto não confiável em `run:`, permissões só leitura, sem secrets). Verificação de aceite: o próprio run do PR #11 ficou verde (198 testes coletados, nenhuma ocorrência de `TRIAGE_LLM_BASE_URL`/`GOOGLE_API_KEY` no log) e o run de `push` na `main` após o merge também ficou verde, confirmando o badge com status real.
+- **C-03** (branch protection, sem commit/PR, configuração de repositório): aplicado via `gh api PUT repos/.../branches/main/protection` com `required_status_checks` (`strict: true`, `contexts: ["tests"]`) e `enforce_admins: true`, sem exigência de aprovação de PR (`required_pull_request_reviews: null`). Confirmado por leitura da configuração após a aplicação. O fluxo de merge do projeto passa a depender do check `tests` estar verde (inclusive para o próprio Claude Code, com `enforce_admins` ativo).
+- **C-04/C-05** (ruff): decisão do usuário via AskUserQuestion foi adiar, mesmo com o CI base já verde; ficam registrados como backlog pendente em `docs/CI_PLAN.md`, sem tarefa nova agendada.
+
+Duas decisões tomadas via AskUserQuestion nesta sessão: (1) merge do PR #11 feito pelo próprio Claude Code via `gh pr merge`, mesmo padrão das sessões anteriores; (2) aplicar C-03 agora com as configurações exatas descritas acima, e não implementar C-04/C-05 nesta sessão.
+
+Esta própria entrada foi registrada em um pull request separado (`docs/ci-implementation-log`), já que a branch protection do C-03 passou a exigir PR com o check `tests` verde até para alterações de documentação.
+
