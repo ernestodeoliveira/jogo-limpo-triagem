@@ -24,6 +24,7 @@ SeverityBand = Literal["sem_risco", "baixo", "moderado", "alto"]
 
 MAX_ATTEMPTS = 3
 MAX_ANSWER_LENGTH = 300
+MAX_RETRY_CYCLES = 5
 
 BAND_LABELS: dict[SeverityBand, str] = {
     "sem_risco": "sem indicativo de risco",
@@ -183,10 +184,15 @@ def make_validate_answer_node(llm) -> Callable[[TriageState], dict]:
 
 def route_after_validation(
     state: TriageState,
-) -> Literal["ask_question", "retry_offer", "score_node", "crisis_node"]:
+) -> Literal["ask_question", "retry_offer", "score_node", "crisis_node", "abort_node"]:
     if state["crisis_flag"]:
         return "crisis_node"
     if state["attempts"] >= MAX_ATTEMPTS:
+        if state["retry_cycles"] >= MAX_RETRY_CYCLES:
+            # Global cap on retry cycles per session (A-08 reassessment,
+            # multi-user threat model): stop offering, close politely
+            # instead of pausing for another retry_offer round.
+            return "abort_node"
         return "retry_offer"
     if state["current_question"] >= 9:
         return "score_node"
@@ -227,7 +233,11 @@ def retry_offer_node(state: TriageState) -> dict:
         # logic below must not run at all for this reply.
         return {"user_input": text, "crisis_flag": True}
     if interpret_offer_reply(text) == "retry":
-        return {"user_input": text, "attempts": 0}
+        return {
+            "user_input": text,
+            "attempts": 0,
+            "retry_cycles": state["retry_cycles"] + 1,
+        }
     return {"user_input": text}
 
 

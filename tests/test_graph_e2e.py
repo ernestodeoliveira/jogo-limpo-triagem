@@ -14,7 +14,14 @@ from langgraph.types import Command
 
 from triagem.fakes import FakeLLM
 from triagem.graph import build_agent, read_interrupt_payload
-from triagem.nodes import ABORT_MESSAGE, BAND_EXPLANATIONS, RETRY_HINT, interpret_offer_reply
+from triagem.nodes import (
+    ABORT_MESSAGE,
+    BAND_EXPLANATIONS,
+    MAX_RETRY_CYCLES,
+    RETRY_HINT,
+    interpret_offer_reply,
+    route_after_validation,
+)
 from triagem.state import initial_state
 from triagem.tools import DISCLAIMER, load_pgsi_questions, load_pgsi_scale
 
@@ -394,3 +401,43 @@ def test_overlong_crisis_message_still_wins(app, config):
 
     assert result["crisis_flag"] is True
     assert "188" in result["final_answer"]
+
+
+def test_route_after_validation_aborts_when_retry_cycles_exhausted():
+    exhausted_state = {
+        **initial_state("x"),
+        "attempts": 3,
+        "retry_cycles": MAX_RETRY_CYCLES,
+    }
+    assert route_after_validation(exhausted_state) == "abort_node"
+
+    not_yet_state = {
+        **initial_state("x"),
+        "attempts": 3,
+        "retry_cycles": MAX_RETRY_CYCLES - 1,
+    }
+    assert route_after_validation(not_yet_state) == "retry_offer"
+
+
+def test_sixth_retry_cycle_aborts_politely(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+
+    for cycle in range(MAX_RETRY_CYCLES):
+        for reply in ["banana", "talvez", "nao sei dizer"]:
+            result = app.invoke(Command(resume=reply), config)
+        payload = read_interrupt_payload(result)
+        assert payload is not None and payload["kind"] == "retry_offer"
+
+        result = app.invoke(Command(resume="tentar de novo"), config)
+        assert result["retry_cycles"] == cycle + 1
+        payload = read_interrupt_payload(result)
+        assert payload is not None and payload["kind"] == "question"
+
+    for reply in ["banana", "talvez", "nao sei dizer"]:
+        result = app.invoke(Command(resume=reply), config)
+
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["final_answer"] == ABORT_MESSAGE
+    assert result["error"] == "max_invalid_attempts"
+    assert result["score"] is None

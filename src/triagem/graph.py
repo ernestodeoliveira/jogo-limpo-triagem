@@ -87,6 +87,7 @@ def build_agent(llm=None, checkpointer=None):
             "retry_offer": "retry_offer",
             "score_node": "score_node",
             "crisis_node": "crisis_node",
+            "abort_node": "abort_node",
         },
     )
     builder.add_conditional_edges(

@@ -10,6 +10,7 @@ class TriageState(TypedDict):
     phase: Literal["acolhimento", "triagem", "crise", "resultado"] | None
     current_question: int  # 0..9: index of the next item; 9 means questionnaire complete
     attempts: int  # invalid attempts for the current item
+    retry_cycles: int  # retry_offer cycles accepted this session (A-08)
     answers: Annotated[dict, operator.or_]  # {"q1": 2, ...} merged across turns
     crisis_flag: bool
     score: int | None
@@ -26,6 +27,7 @@ def initial_state(user_input: str) -> TriageState:
         phase=None,
         current_question=0,
         attempts=0,
+        retry_cycles=0,
         answers={},
         crisis_flag=False,
         score=None,
