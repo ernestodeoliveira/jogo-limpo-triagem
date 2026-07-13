@@ -34,10 +34,10 @@ Padrões herdados do repositório de referência (stack-sentinel): TypedDict + r
 ```mermaid
 flowchart TD
     START --> safety_gate
-    safety_gate -- crise --> crisis_node --> final_answer
+    safety_gate -- crise --> crisis_node --> finalize
     safety_gate -- ok --> classify_intent
-    classify_intent -- fora_dominio --> fallback --> final_answer
-    classify_intent -- duvida --> info_node --> final_answer
+    classify_intent -- fora_dominio --> fallback --> finalize
+    classify_intent -- duvida --> info_node --> finalize
     classify_intent -- iniciar/responder --> ask_question
     ask_question -- "interrupt()" --> validate_answer
     validate_answer -- crise --> crisis_node
@@ -46,13 +46,15 @@ flowchart TD
     retry_offer -- "interrupt()" --> retry_offer
     retry_offer -- crise --> crisis_node
     retry_offer -- tentar de novo --> ask_question
-    retry_offer -- encerrar/não reconhecido --> abort_node --> final_answer
+    retry_offer -- encerrar/não reconhecido --> abort_node --> finalize
     validate_answer -- válida e current_question < 9 --> ask_question
     validate_answer -- válida e current_question == 9 --> score_node
-    score_node --> band_node --> report_node --> final_answer
+    score_node --> band_node --> report_node --> finalize
 ```
 
 Crise tem precedência absoluta (D-04): `safety_gate` checa a mensagem inicial antes de qualquer classificação de intenção; `validate_answer` e `retry_offer` checam cada resposta retomada via `Command(resume=...)` antes de interpretá-la (Q4), inclusive quando a pessoa está no meio da oferta de tentar de novo/encerrar. Em qualquer um dos três pontos, detecção de crise desvia direto para `crisis_node`, que por sua vez alimenta `finalize` (`final_answer` já vem pronto, `finalize_node` só repassa).
+
+`crisis_node`, `abort_node`, `info_node` e `fallback_node` vão direto para `finalize` sem passar por `report_node`: nenhum relatório é gravado nesses fluxos, só no questionário completo.
 
 ### Tabela de nós
 
@@ -68,9 +70,9 @@ Crise tem precedência absoluta (D-04): `safety_gate` checa a mensagem inicial a
 | `abort_node` | determinístico | Encerramento educado após a pessoa optar por encerrar (ou resposta não reconhecida à oferta), com recursos |
 | `score_node` | ferramenta | `compute_pgsi_score(answers)` |
 | `band_node` | determinístico | Score → faixa (0; 1-2; 3-7; 8-27) |
-| `report_node` | ferramenta | `write_triage_report(...)`; guarda `report_path` |
+| `report_node` | ferramenta | Monta `TriageOutcome` (thread_id do config, timestamp) e chama `write_triage_report` respeitando `TRIAGE_REPORTS_DIR`; guarda `report_path`; só roda no questionário completo, depois de `band_node` |
 | `fallback_node` | determinístico | Fora de domínio: redireciona gentilmente ao propósito do agente |
-| `final_answer` | determinístico | Monta a saída estruturada final (nenhum número vem de LLM) |
+| `finalize` | determinístico | Saída final (faixa + explicação acolhedora + encaminhamentos fixos + disclaimer + caminho do relatório; nenhum número vem de LLM); passthrough quando `final_answer` já existe (crisis/abort/info/fallback) |
 
 ## 4. Multi-turno: decisão A/B
 

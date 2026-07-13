@@ -9,11 +9,12 @@ from triagem.graph import build_agent
 
 
 @pytest.fixture(autouse=True)
-def offline_env(monkeypatch):
+def offline_env(monkeypatch, tmp_path):
     """Force offline mode (RNF-02) even on a shell with a real endpoint configured."""
     monkeypatch.setenv("TRIAGE_FAKE_LLM", "1")
     monkeypatch.delenv("TRIAGE_LLM_BASE_URL", raising=False)
     monkeypatch.delenv("TRIAGE_LLM_MODEL", raising=False)
+    monkeypatch.setenv("TRIAGE_REPORTS_DIR", str(tmp_path / "reports"))
 
 
 @pytest.fixture

@@ -1,13 +1,24 @@
 """Graph nodes for the PGSI triage agent."""
 
+import os
+from datetime import datetime
 from typing import Callable, Literal, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
 from triagem.parsing import make_answer_parser, normalize
 from triagem.safety import check_crisis
 from triagem.state import TriageState
-from triagem.tools import compute_pgsi_score, load_pgsi_questions, load_pgsi_scale
+from triagem.tools import (
+    DISCLAIMER,
+    REFERRALS,
+    TriageOutcome,
+    compute_pgsi_score,
+    load_pgsi_questions,
+    load_pgsi_scale,
+    write_triage_report,
+)
 
 SeverityBand = Literal["sem_risco", "baixo", "moderado", "alto"]
 
@@ -18,6 +29,27 @@ BAND_LABELS: dict[SeverityBand, str] = {
     "baixo": "risco baixo",
     "moderado": "risco moderado",
     "alto": "risco alto",
+}
+
+BAND_EXPLANATIONS: dict[SeverityBand, str] = {
+    "sem_risco": (
+        "Suas respostas não indicam sinais de risco relacionados a apostas "
+        "neste momento. Vale seguir atento ao seu bem-estar."
+    ),
+    "baixo": (
+        "Suas respostas indicam um risco baixo relacionado a apostas. Pode "
+        "ser útil observar se o seu padrão de uso muda com o tempo."
+    ),
+    "moderado": (
+        "Suas respostas indicam um risco moderado relacionado a apostas. "
+        "Buscar mais informações ou conversar com alguém de confiança pode "
+        "ajudar."
+    ),
+    "alto": (
+        "Suas respostas indicam um risco alto relacionado a apostas. Buscar "
+        "apoio especializado pode fazer diferença, e você não precisa lidar "
+        "com isso sozinho."
+    ),
 }
 
 ABORT_MESSAGE = (
@@ -237,19 +269,47 @@ def band_node(state: TriageState) -> dict:
     return {"severity_band": score_to_band(state["score"])}
 
 
-def finalize_node(state: TriageState) -> dict:
-    """Assemble the final output; minimal this phase, enriched later (T-16).
+def report_node(state: TriageState, config: RunnableConfig) -> dict:
+    """Persist the completed triage as .md/.json and record the report path.
 
-    Passes through when an earlier node (abort, info, fallback) already
-    produced the final message.
+    Only runs after the questionnaire completes (score_node -> band_node),
+    when state["answers"] already holds all q1..q9: TriageOutcome validates
+    that invariant. The timestamp is generated here, not inside
+    TriageOutcome or write_triage_report, which both take it ready-made.
+    """
+    thread_id = str(config.get("configurable", {}).get("thread_id") or "sem-thread")
+    outcome = TriageOutcome(
+        thread_id=thread_id,
+        timestamp=datetime.now().isoformat(timespec="seconds"),
+        score=state["score"],
+        severity_band=state["severity_band"],
+        answers=state["answers"],
+    )
+    out_dir = os.environ.get("TRIAGE_REPORTS_DIR") or "reports"
+    return {"report_path": write_triage_report(outcome, out_dir=out_dir)}
+
+
+def finalize_node(state: TriageState) -> dict:
+    """Assemble the final output: band, explanation, score, referrals, report.
+
+    Passes through when an earlier node (abort, info, fallback, crisis)
+    already produced the final message. Otherwise this is the happy path
+    (score_node -> band_node -> report_node -> finalize): pure formatting,
+    no number is computed here (D-06), everything already arrived ready in
+    state.
     """
     if state["final_answer"] is not None:
         return {}
     band_label = BAND_LABELS[state["severity_band"]]
-    return {
-        "final_answer": (
-            f"Resultado da triagem PGSI: pontuação {state['score']} de 27 "
-            f"({band_label}). Esta é uma triagem educacional e não substitui "
-            "avaliação profissional."
-        )
-    }
+    explanation = BAND_EXPLANATIONS[state["severity_band"]]
+    referral_lines = "\n".join(f"- {referral}" for referral in REFERRALS)
+    final_answer = (
+        f"Resultado da triagem PGSI: {band_label}, pontuação {state['score']} "
+        "de 27.\n\n"
+        f"{explanation}\n\n"
+        "Encaminhamentos:\n"
+        f"{referral_lines}\n\n"
+        f"{DISCLAIMER}\n\n"
+        f"Relatório gravado em: {state['report_path']}"
+    )
+    return {"final_answer": final_answer, "phase": "resultado"}

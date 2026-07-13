@@ -15,6 +15,7 @@ from triagem.nodes import (
     finalize_node,
     info_node,
     make_validate_answer_node,
+    report_node,
     retry_offer_node,
     route_after_offer,
     route_after_validation,
@@ -57,6 +58,7 @@ def build_agent(llm=None, checkpointer=None):
     builder.add_node("abort_node", abort_node)
     builder.add_node("score_node", score_node)
     builder.add_node("band_node", band_node)
+    builder.add_node("report_node", report_node)
     builder.add_node("finalize", finalize_node)
 
     builder.add_edge(START, "safety_gate")
@@ -97,7 +99,8 @@ def build_agent(llm=None, checkpointer=None):
         },
     )
     builder.add_edge("score_node", "band_node")
-    builder.add_edge("band_node", "finalize")
+    builder.add_edge("band_node", "report_node")
+    builder.add_edge("report_node", "finalize")
     builder.add_edge("abort_node", "finalize")
     builder.add_edge("crisis_node", "finalize")
     builder.add_edge("finalize", END)
