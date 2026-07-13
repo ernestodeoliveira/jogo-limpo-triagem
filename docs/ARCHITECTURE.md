@@ -16,7 +16,7 @@ class TriageState(TypedDict):
     user_input: str
     intent: Literal["iniciar", "responder", "duvida", "fora_dominio"] | None
     phase: Literal["acolhimento", "triagem", "crise", "resultado"] | None
-    current_question: int                      # 0..8 (índice do próximo item)
+    current_question: int                      # 0..9 (índice do próximo item; 9 = questionário completo)
     attempts: int                              # tentativas inválidas no item atual
     answers: Annotated[dict, operator.or_]     # {"q1": 2, ...} reducer de merge
     crisis_flag: bool
@@ -89,10 +89,10 @@ print(result["final_answer"])
 |---|---|
 | "0", "nunca", "nao", "jamais" | 0 |
 | "1", "as vezes", "às vezes", "raramente", "de vez em quando" | 1 |
-| "2", "quase sempre", "frequentemente", "na maioria das vezes" | 2 |
-| "3", "sempre", "toda vez" | 3 |
+| "2", "na maioria das vezes", "frequentemente" | 2 |
+| "3", "quase sempre", "sempre", "toda vez" | 3 |
 
-Regras: normalizar (lower + strip + remover acentos); match exato ou por token inicial; ambíguo ou fora da tabela → inválido. Se inválido, e somente então, fallback LLM com `with_structured_output` restrito a `Literal[0, 1, 2, 3] | None` (None = não interpretável). Instrução embutida na resposta é inválida por definição: o parser não "obedece" texto.
+Regras: normalizar (lower + strip + remover acentos); match exato da string normalizada completa; ambíguo ou fora da tabela → inválido. Se inválido, e somente então, fallback LLM com `with_structured_output` restrito a `Literal[0, 1, 2, 3] | None` (None = não interpretável). Instrução embutida na resposta é inválida por definição: o parser não "obedece" texto.
 
 ## 6. Ferramentas (contratos)
 

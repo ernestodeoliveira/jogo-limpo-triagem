@@ -9,8 +9,8 @@ the real client targets a local OpenAI-compatible endpoint (decision Q6).
 """
 
 import os
-import re
-import unicodedata
+
+from triagem.parsing import normalize, parse_answer_deterministic
 
 _DUVIDA_MARKERS = [
     "o que e",
@@ -40,31 +40,6 @@ _INICIAR_MARKERS = [
     "avaliacao",
     "sim",
 ]
-
-_ANSWER_TABLE = {
-    "0": 0,
-    "nunca": 0,
-    "nao": 0,
-    "jamais": 0,
-    "1": 1,
-    "as vezes": 1,
-    "raramente": 1,
-    "de vez em quando": 1,
-    "2": 2,
-    "na maioria das vezes": 2,
-    "frequentemente": 2,
-    "3": 3,
-    "quase sempre": 3,
-    "sempre": 3,
-    "toda vez": 3,
-}
-
-
-def _normalize(text: str) -> str:
-    """Lowercase, strip accents and punctuation, collapse whitespace."""
-    decomposed = unicodedata.normalize("NFKD", text.lower())
-    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", stripped)).strip()
 
 
 def _extract_text(input) -> str:
@@ -122,7 +97,7 @@ class FakeClassifier:
 
     @staticmethod
     def _classify(text: str) -> dict:
-        normalized = _normalize(text)
+        normalized = normalize(text)
         if "?" in text or _contains_any(normalized, _DUVIDA_MARKERS):
             return {"intent": "duvida"}
         if _contains_any(normalized, _FORA_DOMINIO_MARKERS):
@@ -137,8 +112,13 @@ class FakeAnswerParser:
 
     Exact match keeps "sempre" from swallowing "quase sempre" and makes any
     instruction-like input fall to None instead of being obeyed (D-03).
-    No graph node consumes this before T-12; the class ships with T-09 so the
-    offline surface is complete.
+    This is the offline stand-in for BOTH the deterministic path and the
+    make_answer_parser LLM fallback path (T-12): FakeLLM.with_structured_output
+    dispatches here for any schema with a "value" field, whether it is called
+    directly or invoked as the fallback after a table miss. Because both
+    paths reuse the same table, an off-table answer can never be "rescued"
+    offline; this is intentional, not a bug, and only the real LLM can
+    resolve answers outside ANSWER_TABLE.
     """
 
     def with_structured_output(self, schema, **kwargs):
@@ -146,7 +126,7 @@ class FakeAnswerParser:
 
     @staticmethod
     def _parse(text: str) -> dict:
-        return {"value": _ANSWER_TABLE.get(_normalize(text))}
+        return {"value": parse_answer_deterministic(text)}
 
 
 class FakeLLM:
@@ -163,7 +143,8 @@ class FakeLLM:
             return FakeClassifier().with_structured_output(schema, **kwargs)
         if "value" in fields:
             return FakeAnswerParser().with_structured_output(schema, **kwargs)
-        raise ValueError(f"no fake behavior registered for schema {schema.__name__}")
+        name = getattr(schema, "__name__", repr(schema))
+        raise ValueError(f"no fake behavior registered for schema {name}")
 
 
 def get_llm():
