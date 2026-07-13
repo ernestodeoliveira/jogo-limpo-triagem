@@ -23,6 +23,7 @@ from triagem.tools import (
 SeverityBand = Literal["sem_risco", "baixo", "moderado", "alto"]
 
 MAX_ATTEMPTS = 3
+MAX_ANSWER_LENGTH = 300
 
 BAND_LABELS: dict[SeverityBand, str] = {
     "sem_risco": "sem indicativo de risco",
@@ -162,6 +163,11 @@ def make_validate_answer_node(llm) -> Callable[[TriageState], dict]:
         text = state["user_input"].strip()
         if check_crisis(text):
             return {"crisis_flag": True}
+        if len(text) > MAX_ANSWER_LENGTH:
+            # Reject before the LLM fallback ever sees it (A-03/O-02): an
+            # answer this long can never be a legitimate PGSI reply, so this
+            # is a free invalid attempt, not an unbounded-consumption risk.
+            return {"attempts": state["attempts"] + 1}
         value = parser(text)
         if value is not None:
             question_id = f"q{state['current_question'] + 1}"
