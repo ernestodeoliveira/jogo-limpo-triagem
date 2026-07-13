@@ -12,7 +12,7 @@ import pytest
 from langgraph.types import Command
 
 from triagem.graph import read_interrupt_payload
-from triagem.nodes import ABORT_MESSAGE, RETRY_HINT, interpret_offer_reply
+from triagem.nodes import ABORT_MESSAGE, BAND_EXPLANATIONS, RETRY_HINT, interpret_offer_reply
 from triagem.state import initial_state
 from triagem.tools import DISCLAIMER, load_pgsi_questions, load_pgsi_scale
 
@@ -311,6 +311,7 @@ def test_full_triage(app, config):
     final = result["final_answer"]
     assert "risco alto" in final
     assert "15" in final
+    assert BAND_EXPLANATIONS["alto"] in final
     assert DISCLAIMER in final
     assert report_path in final
     assert "188" in final and "gov.br" in final and "CAPS" in final
