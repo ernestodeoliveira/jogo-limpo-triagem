@@ -194,9 +194,14 @@ def retry_offer_node(state: TriageState) -> dict:
 
 
 def route_after_offer(state: TriageState) -> Literal["ask_question", "abort_node"]:
-    if interpret_offer_reply(state["user_input"]) == "retry":
-        return "ask_question"
-    return "abort_node"
+    """Read the decision retry_offer_node already made, do not reclassify it.
+
+    retry_offer only has one incoming edge (from route_after_validation at
+    the attempts limit), so after retry_offer_node runs attempts is either
+    exactly 0 (retry branch reset it) or unchanged at MAX_ATTEMPTS (abort
+    branch left it alone): a reliable proxy for the node's own decision.
+    """
+    return "ask_question" if state["attempts"] == 0 else "abort_node"
 
 
 def abort_node(state: TriageState) -> dict:
