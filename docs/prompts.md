@@ -92,6 +92,67 @@ pode realizar a pesquisa, o inicio de implementacao sera realizado em outra sess
 
 **Resultado**: fonte encontrada e aprovada: Moura CC et al., "Cross-cultural adaptation and content validity of the PGSI into Brazilian Portuguese", Rev Saúde Pública. 2026;60:e27, DOI 10.11606/s1518-8787.2026060007368. Texto literal dos 9 itens, stem e escala transcritos e verificados em dupla extração do XML JATS; registrados no Anexo A do `docs/PLAN.md`. Aprovação com ajuste de termo: trocar "versão validada" por "versão brasileira com adaptação transcultural e validade de conteúdo" no README §12 e na D-07 (T-21/T-23).
 
+### P-004: Planejamento de CI com GitHub Actions (Claude Code, 13/07)
+
+```text
+# Papel
+Atue como engenheiro de software sênior especialista em GitHub Actions e integração
+contínua para projetos Python geridos com uv, no papel de planejador técnico deste
+repositório. Nesta sessão você NÃO implementa nenhum workflow, NÃO cria arquivos em
+.github/ e NÃO altera pyproject.toml/uv.lock — apenas planeja.
+
+# Tarefa
+1. Leia pyproject.toml, uv.lock, tests/conftest.py e docs/ARCHITECTURE.md §9
+   (configuração) para confirmar como a suíte roda hoje (comando exato, variáveis de
+   ambiente, versão do Python) e o que precisa ser reproduzido em CI.
+2. Pesquise e proponha o design do workflow do GitHub Actions cobrindo, no mínimo:
+   a. Gatilho: pull_request contra main (obrigatório, pedido do usuário) e avalie se
+      push em main também deve rodar;
+   b. Setup do uv (ação oficial astral-sh/setup-uv ou equivalente) com cache de
+      dependências;
+   c. Versão(ões) de Python testada(s) (hoje só >=3.11 é exigido; avaliar se testar
+      uma única versão ou matriz);
+   d. Comando de teste: uv run pytest, garantindo que TRIAGE_FAKE_LLM=1 nunca precise
+      de nenhum secret do GitHub (a fixture autouse já força isso localmente;
+      confirmar que nada em CI tentaria setar TRIAGE_LLM_BASE_URL/GOOGLE_API_KEY);
+   e. Se vale a pena incluir checagem de lint/format/type-check nesta CI, dado que
+      hoje nenhuma ferramenta está configurada no projeto (se recomendar adicionar,
+      indicar qual ferramenta, ex. ruff, e se isso é tarefa separada do backlog ou
+      parte deste mesmo lote);
+   f. Permissões do workflow (princípio de menor privilégio, ex. permissions:
+      contents: read) e pinagem de versão das actions de terceiros usadas (por hash
+      de commit ou tag semver, considerando que o projeto já se preocupa com supply
+      chain em pyproject.toml/uv.lock);
+   g. Se faz sentido exigir o check da CI como obrigatório antes de merge (branch
+      protection rule em main) e, se sim, se isso é algo que a própria sessão de
+      implementação pode configurar via gh api/gh cli ou se precisa de aprovação e
+      execução manual do usuário no GitHub (mudança de configuração do repositório,
+      não um arquivo versionado);
+   h. Nome e badge de status: sugerir nome do workflow e se vale adicionar um badge
+      no README.
+3. Aponte alternativas descartadas e o porquê (ex. outras ações de setup, outras
+   estratégias de cache, outros gatilhos de branch).
+4. Liste as perguntas abertas que exigem decisão humana antes de implementar (ex.
+   escopo de lint, matriz de versões, branch protection), cada uma com recomendação.
+
+# Formato
+Crie o arquivo docs/CI_PLAN.md com estas seções:
+1. "Resumo do entendimento" (máximo 10 linhas);
+2. "Opções consideradas e descartadas";
+3. "Proposta recomendada" (inclua um esboço do YAML do workflow como exemplo
+   ilustrativo, mas não crie o arquivo .github/workflows/ de verdade nesta sessão);
+4. "Backlog de implementação" (tabela: ID | Tarefa | Arquivos | Teste/Verificação |
+   Commit sugerido, no mesmo formato de docs/PLAN.md, pronta para uma sessão futura
+   de implementação executar);
+5. "Perguntas abertas" (cada uma com recomendação).
+Registre esta sessão em docs/prompts.md como P-004 (prompt e resultado), na seção
+"1. Planejamento", no padrão do arquivo.
+Ao final, imprima no chat apenas o resumo do entendimento e as perguntas abertas, e
+pare aguardando as respostas antes de qualquer implementação de workflow.
+```
+
+**Resultado**: `docs/CI_PLAN.md` criado com as 5 seções pedidas. Confirmado que a suíte roda hoje via `uv run pytest` (198 testes) inteiramente offline: a fixture autouse `offline_env` em `tests/conftest.py` força `TRIAGE_FAKE_LLM=1` e limpa `TRIAGE_LLM_BASE_URL`/`TRIAGE_LLM_MODEL`, e nenhuma referência a `GOOGLE_API_KEY` existe em `src/`/`tests/` (só em documentação desatualizada, correção já agendada em T-21/T-23). Proposta recomendada: workflow `CI` (`.github/workflows/ci.yml`), gatilhos `pull_request` para `main` + `push` em `main` + `workflow_dispatch`, `permissions: contents: read`, `concurrency` com cancelamento de runs obsoletos, `actions/checkout@v7.0.0` e `astral-sh/setup-uv@v8.3.2` pinados por SHA de commit completo, uv fixado em `0.10.2`, Python só 3.11, `uv sync --locked` + `uv run --no-sync pytest`, sem nenhuma variável de ambiente no workflow. Lint (ruff) e branch protection ficaram como backlog condicional (C-04/C-05) e ação pós-merge (C-03) respectivamente, não bloqueando o CI base. Backlog de 5 itens (C-01 a C-05) registrado em `docs/CI_PLAN.md` §4. Quatro perguntas abertas levantadas e decididas via `AskUserQuestion`, todas na opção recomendada: (1) só Python 3.11; (2) rodar também em `push` na `main` e adicionar badge no README; (3) lint como tarefa separada do backlog, depois do CI base verde; (4) branch protection via `gh api` na sessão de implementação, com aprovação explícita do usuário na hora, após o primeiro run verde na `main`. Nenhum arquivo em `.github/`, `pyproject.toml` ou `uv.lock` foi criado ou alterado nesta sessão, conforme escopo pedido.
+
 ## 2. Implementação
 
 ### I-001: Implementação do lote do dia 13/07, T-01 a T-06 (Claude Code, 12/07)
