@@ -5,6 +5,7 @@ from typing import Callable, Literal, TypedDict
 from langgraph.types import interrupt
 
 from triagem.parsing import make_answer_parser, normalize
+from triagem.safety import check_crisis
 from triagem.state import TriageState
 from triagem.tools import compute_pgsi_score, load_pgsi_questions, load_pgsi_scale
 
@@ -93,16 +94,6 @@ def score_to_band(score: int) -> SeverityBand:
     return "alto"
 
 
-def safety_gate(state: TriageState) -> dict:
-    """Stub: crisis detection lands on day 15 (T-14); no state change for now."""
-    return {}
-
-
-def route_safety(state: TriageState) -> Literal["ok"]:
-    """Stub route: always "ok" until the crisis heuristic exists (T-14)."""
-    return "ok"
-
-
 def ask_question(state: TriageState) -> dict:
     """Deliver the current PGSI item and pause waiting for the answer.
 
@@ -137,6 +128,8 @@ def make_validate_answer_node(llm) -> Callable[[TriageState], dict]:
 
     def validate_answer_node(state: TriageState) -> dict:
         text = state["user_input"].strip()
+        if check_crisis(text):
+            return {"crisis_flag": True}
         value = parser(text)
         if value is not None:
             question_id = f"q{state['current_question'] + 1}"
@@ -152,7 +145,9 @@ def make_validate_answer_node(llm) -> Callable[[TriageState], dict]:
 
 def route_after_validation(
     state: TriageState,
-) -> Literal["ask_question", "retry_offer", "score_node"]:
+) -> Literal["ask_question", "retry_offer", "score_node", "crisis_node"]:
+    if state["crisis_flag"]:
+        return "crisis_node"
     if state["attempts"] >= MAX_ATTEMPTS:
         return "retry_offer"
     if state["current_question"] >= 9:
@@ -188,19 +183,33 @@ def retry_offer_node(state: TriageState) -> dict:
     )
     reply = interrupt(payload)
     text = reply if isinstance(reply, str) else str(reply)
+    if check_crisis(text):
+        # Crisis wins outright, even over the retry offer (D-04): attempts is
+        # deliberately left unchanged (still MAX_ATTEMPTS), the retry/abort
+        # logic below must not run at all for this reply.
+        return {"user_input": text, "crisis_flag": True}
     if interpret_offer_reply(text) == "retry":
         return {"user_input": text, "attempts": 0}
     return {"user_input": text}
 
 
-def route_after_offer(state: TriageState) -> Literal["ask_question", "abort_node"]:
+def route_after_offer(
+    state: TriageState,
+) -> Literal["ask_question", "abort_node", "crisis_node"]:
     """Read the decision retry_offer_node already made, do not reclassify it.
 
-    retry_offer only has one incoming edge (from route_after_validation at
-    the attempts limit), so after retry_offer_node runs attempts is either
-    exactly 0 (retry branch reset it) or unchanged at MAX_ATTEMPTS (abort
-    branch left it alone): a reliable proxy for the node's own decision.
+    Crisis is checked first: retry_offer_node's crisis branch does not reset
+    attempts, so attempts stays at MAX_ATTEMPTS same as the abort branch, and
+    crisis_flag is the only reliable signal to tell them apart.
+
+    Otherwise, retry_offer only has one incoming edge (from
+    route_after_validation at the attempts limit), so after retry_offer_node
+    runs attempts is either exactly 0 (retry branch reset it) or unchanged at
+    MAX_ATTEMPTS (abort branch left it alone): a reliable proxy for the
+    node's own decision.
     """
+    if state["crisis_flag"]:
+        return "crisis_node"
     return "ask_question" if state["attempts"] == 0 else "abort_node"
 
 

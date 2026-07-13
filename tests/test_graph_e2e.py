@@ -228,3 +228,41 @@ def test_interpret_offer_reply_recognizes_retry_choices(text):
 )
 def test_interpret_offer_reply_defaults_to_abort(text):
     assert interpret_offer_reply(text) == "abort"
+
+
+def test_crisis_mid_questionnaire(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    result = app.invoke(Command(resume="0"), config)
+    result = app.invoke(Command(resume="1"), config)
+    result = app.invoke(Command(resume="não aguento mais, quero morrer"), config)
+
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["crisis_flag"] is True
+    assert result["phase"] == "crise"
+    assert "188" in result["final_answer"]
+    assert "192" in result["final_answer"]
+    assert result["score"] is None
+    assert result["answers"] == {"q1": 0, "q2": 1}
+    assert result["attempts"] == 0
+
+
+def test_crisis_at_retry_offer(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in ["banana", "talvez", "nao sei dizer"]:
+        result = app.invoke(Command(resume=reply), config)
+
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["kind"] == "retry_offer"
+
+    # Crisis wins outright over the retry-offer flow (D-04): same outcome as
+    # a fresh-message crisis, not the abort path an unrecognized reply would
+    # otherwise take.
+    result = app.invoke(Command(resume="quero me matar"), config)
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["error"] is None
+    assert result["crisis_flag"] is True
+    assert "188" in result["final_answer"]
+    assert "192" in result["final_answer"]
