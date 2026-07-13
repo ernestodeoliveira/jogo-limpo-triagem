@@ -25,6 +25,7 @@ def test_duvida_reaches_info_node(app, config):
     assert result["intent"] == "duvida"
     assert result["final_answer"] == INFO_MESSAGE
     assert result["score"] is None
+    assert result["report_path"] is None
 
 
 def test_fora_dominio_reaches_fallback_node(app, config):
@@ -33,6 +34,7 @@ def test_fora_dominio_reaches_fallback_node(app, config):
     assert read_interrupt_payload(result) is None
     assert result["intent"] == "fora_dominio"
     assert result["final_answer"] == FALLBACK_MESSAGE
+    assert result["report_path"] is None
 
 
 def test_responder_default_enters_question_cycle(app, config):

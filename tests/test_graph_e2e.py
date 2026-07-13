@@ -114,6 +114,8 @@ def test_abort_after_three_invalid_attempts(app, config):
     assert result["error"] == "max_invalid_attempts"
     assert result["final_answer"] == ABORT_MESSAGE
     assert result["score"] is None
+    # abort_node goes straight to finalize, bypassing report_node entirely.
+    assert result["report_path"] is None
 
 
 def test_retry_and_abort(app, config):
@@ -248,6 +250,8 @@ def test_crisis_mid_questionnaire(app, config):
     assert result["score"] is None
     assert result["answers"] == {"q1": 0, "q2": 1}
     assert result["attempts"] == 0
+    # crisis_node goes straight to finalize, bypassing report_node entirely.
+    assert result["report_path"] is None
 
 
 def test_crisis_at_retry_offer(app, config):
