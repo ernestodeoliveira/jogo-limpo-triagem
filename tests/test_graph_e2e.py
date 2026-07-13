@@ -8,7 +8,7 @@ canonical read_interrupt_payload helper (risk R-03).
 from langgraph.types import Command
 
 from triagem.graph import read_interrupt_payload
-from triagem.nodes import ABORT_MESSAGE
+from triagem.nodes import ABORT_MESSAGE, RETRY_HINT
 from triagem.state import initial_state
 from triagem.tools import load_pgsi_questions, load_pgsi_scale
 
@@ -20,12 +20,14 @@ def test_first_invoke_pauses_with_question_one_payload(app, config):
 
     payload = read_interrupt_payload(result)
     assert payload is not None
-    assert set(payload) == {"question_id", "index", "total", "text", "scale"}
+    assert set(payload) == {"kind", "question_id", "index", "total", "text", "scale", "hint"}
+    assert payload["kind"] == "question"
     assert payload["question_id"] == "q1"
     assert payload["index"] == 0
     assert payload["total"] == 9
     assert payload["text"] == load_pgsi_questions()[0].text
     assert payload["scale"] == load_pgsi_scale()
+    assert payload["hint"] is None
 
 
 def test_happy_path_digits(app, config):
@@ -57,6 +59,7 @@ def test_invalid_answer_repeats_same_question(app, config):
     payload = read_interrupt_payload(result)
     assert payload is not None
     assert payload["question_id"] == "q1"
+    assert payload["hint"] == RETRY_HINT
     assert result["attempts"] == 1
     assert result["answers"] == {}
 
@@ -94,6 +97,94 @@ def test_abort_after_three_invalid_attempts(app, config):
     for reply in ["banana", "talvez", "nao sei dizer"]:
         result = app.invoke(Command(resume=reply), config)
 
+    # After the 3rd invalid answer the run pauses with a retry offer, it does
+    # not abort directly (Q3): the person gets a choice.
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["kind"] == "retry_offer"
+    assert payload["question_id"] == "q1"
+
+    result = app.invoke(Command(resume="encerrar"), config)
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["error"] == "max_invalid_attempts"
+    assert result["final_answer"] == ABORT_MESSAGE
+    assert result["score"] is None
+
+
+def test_retry_and_abort(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in ["banana", "talvez", "nao sei dizer"]:
+        result = app.invoke(Command(resume=reply), config)
+
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["kind"] == "retry_offer"
+    assert payload["question_id"] == "q1"
+
+    # Retry: the same item is re-presented with attempts reset.
+    result = app.invoke(Command(resume="tentar de novo"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["kind"] == "question"
+    assert payload["question_id"] == "q1"
+    assert payload["hint"] is None
+
+    # Three more invalid answers reopen the offer.
+    for reply in ["banana", "talvez", "nao sei dizer"]:
+        result = app.invoke(Command(resume=reply), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["kind"] == "retry_offer"
+    assert payload["question_id"] == "q1"
+
+    result = app.invoke(Command(resume="encerrar"), config)
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["error"] == "max_invalid_attempts"
+    assert result["final_answer"] == ABORT_MESSAGE
+    assert result["score"] is None
+
+
+def test_retry_then_valid_answer_advances(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in ["banana", "talvez", "nao sei dizer"]:
+        result = app.invoke(Command(resume=reply), config)
+
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["kind"] == "retry_offer"
+
+    # "sim" is one of the RETRY_CHOICES, so it must count as a retry.
+    result = app.invoke(Command(resume="sim"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["kind"] == "question"
+    assert payload["question_id"] == "q1"
+    assert payload["hint"] is None
+
+    result = app.invoke(Command(resume="2"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["question_id"] == "q2"
+    assert result["answers"] == {"q1": 2}
+
+    # The session still completes normally from here.
+    for reply in ["0"] * 8:
+        result = app.invoke(Command(resume=reply), config)
+    assert read_interrupt_payload(result) is None
+    assert result["answers"]["q1"] == 2
+
+
+def test_offer_unrecognized_reply_aborts(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in ["banana", "talvez", "nao sei dizer"]:
+        result = app.invoke(Command(resume=reply), config)
+
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["kind"] == "retry_offer"
+
+    # An unrecognized reply defaults to abort (safe default, no re-offering).
+    result = app.invoke(Command(resume="xyzzy"), config)
     assert read_interrupt_payload(result) is None
     assert "__interrupt__" not in result
     assert result["error"] == "max_invalid_attempts"

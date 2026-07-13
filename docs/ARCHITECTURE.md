@@ -41,7 +41,10 @@ flowchart TD
     classify_intent -- iniciar/responder --> ask_question
     ask_question -- "interrupt()" --> validate_answer
     validate_answer -- inválida (attempts < 3) --> ask_question
-    validate_answer -- inválida (attempts == 3) --> abort_node --> final_answer
+    validate_answer -- inválida (attempts == 3) --> retry_offer
+    retry_offer -- "interrupt()" --> retry_offer
+    retry_offer -- tentar de novo --> ask_question
+    retry_offer -- encerrar/não reconhecido --> abort_node --> final_answer
     validate_answer -- válida e current_question < 9 --> ask_question
     validate_answer -- válida e current_question == 9 --> score_node
     score_node --> band_node --> report_node --> final_answer
@@ -57,7 +60,8 @@ flowchart TD
 | `info_node` | determinístico | Explica o teste, a escala e a privacidade (conteúdo estático) |
 | `ask_question` | determinístico + `interrupt()` | Entrega o item atual com escala; pausa aguardando resposta |
 | `validate_answer` | determinístico + LLM fallback | Parser 0-3; controla `attempts`; grava em `answers`; avança `current_question` |
-| `abort_node` | determinístico | Encerramento educado após 3 tentativas inválidas, com recursos |
+| `retry_offer` | determinístico + `interrupt()` | Após 3 tentativas inválidas, oferece tentar de novo ou encerrar; idempotente antes do `interrupt()` (D-09/R-02); reseta `attempts` só na resposta que escolhe tentar de novo |
+| `abort_node` | determinístico | Encerramento educado após a pessoa optar por encerrar (ou resposta não reconhecida à oferta), com recursos |
 | `score_node` | ferramenta | `compute_pgsi_score(answers)` |
 | `band_node` | determinístico | Score → faixa (0; 1-2; 3-7; 8-27) |
 | `report_node` | ferramenta | `write_triage_report(...)`; guarda `report_path` |
