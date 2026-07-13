@@ -10,6 +10,9 @@ dist/
 # secrets
 .env
 
+# git worktrees (isolated task workspaces)
+.worktrees/
+
 # generated reports (a sample added later stays versioned)
 reports/*
 !reports/sample*
