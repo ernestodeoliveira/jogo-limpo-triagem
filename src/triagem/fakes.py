@@ -9,8 +9,8 @@ the real client targets a local OpenAI-compatible endpoint (decision Q6).
 """
 
 import os
-import re
-import unicodedata
+
+from triagem.parsing import normalize, parse_answer_deterministic
 
 _DUVIDA_MARKERS = [
     "o que e",
@@ -40,31 +40,6 @@ _INICIAR_MARKERS = [
     "avaliacao",
     "sim",
 ]
-
-_ANSWER_TABLE = {
-    "0": 0,
-    "nunca": 0,
-    "nao": 0,
-    "jamais": 0,
-    "1": 1,
-    "as vezes": 1,
-    "raramente": 1,
-    "de vez em quando": 1,
-    "2": 2,
-    "na maioria das vezes": 2,
-    "frequentemente": 2,
-    "3": 3,
-    "quase sempre": 3,
-    "sempre": 3,
-    "toda vez": 3,
-}
-
-
-def _normalize(text: str) -> str:
-    """Lowercase, strip accents and punctuation, collapse whitespace."""
-    decomposed = unicodedata.normalize("NFKD", text.lower())
-    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", stripped)).strip()
 
 
 def _extract_text(input) -> str:
@@ -122,7 +97,7 @@ class FakeClassifier:
 
     @staticmethod
     def _classify(text: str) -> dict:
-        normalized = _normalize(text)
+        normalized = normalize(text)
         if "?" in text or _contains_any(normalized, _DUVIDA_MARKERS):
             return {"intent": "duvida"}
         if _contains_any(normalized, _FORA_DOMINIO_MARKERS):
@@ -146,7 +121,7 @@ class FakeAnswerParser:
 
     @staticmethod
     def _parse(text: str) -> dict:
-        return {"value": _ANSWER_TABLE.get(_normalize(text))}
+        return {"value": parse_answer_deterministic(text)}
 
 
 class FakeLLM:
