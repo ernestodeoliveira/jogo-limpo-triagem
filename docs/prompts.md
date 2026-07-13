@@ -392,3 +392,168 @@ Nenhuma mensagem livre foi enviada durante a execução. Três decisões foram t
 4. `retry_offer_node` também checa crise antes de interpretar a resposta à oferta (T-14): não estava no texto literal da Q4 (que só menciona validate_answer), mas é exigido pela precedência absoluta da crise (D-04, "inclusive sobre a oferta da Q3") já registrada na decisão original.
 5. Os dois pull requests mergeados dentro da própria sessão via `gh pr merge`, a pedido do usuário em cada caso, registrado como decisão via AskUserQuestion (PR #6 antes de iniciar T-13/T-14; PR #7, que inclui esta própria entrada, logo depois de aberto).
 
+### I-004: Implementação do lote do dia 16/07, T-15 a T-18 (Claude Code, 13/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário
+PGSI (9 itens), construído com LangGraph. Os lotes dos dias 13/07 (T-01 a T-06, PRs #2 e
+#3), 14/07 (T-07 a T-10, PRs #4 e #5) e 15/07 (T-11 a T-14, PRs #6 e #7) estão
+implementados e mergeados, sessões I-001 a I-003 em docs/prompts.md. 179 testes verdes
+offline.
+Já existem: graph.py com build_agent(llm) e read_interrupt_payload (QuestionPayload |
+OfferPayload | None); ciclo completo ask_question -> validate_answer (parser
+determinístico + fallback LLM, T-11/T-12) -> retry_offer (oferta de tentar de novo ou
+encerrar após 3 inválidas, T-13) -> score_node -> band_node -> finalize; safety_gate real
+com crisis_node (CVV 188, SAMU 192) com precedência absoluta em três pontos do fluxo
+(T-14); classify.py com IntentResult e rotas; fakes.py completo (FakeClassifier,
+FakeAnswerParser, FakeLLM, get_llm()); tools.py com Question, load_pgsi_questions,
+compute_pgsi_score, load_pgsi_scale. TriageState já tem os campos report_path e
+final_answer, ainda não usados por nenhum nó além de um final_answer mínimo (score e
+faixa, sem relatório em arquivo nem encaminhamentos fixos). Ainda NÃO existem:
+write_triage_report, TriageOutcome, report_node e cli.py.
+docs/PLAN.md é a fonte de verdade. O backlog do dia 16/07 é "relatório, saída final e
+CLI": T-15 a T-18. Contratos já definidos na ARCHITECTURE §6 (não inventar assinatura
+nova):
+    def write_triage_report(result: TriageOutcome, out_dir: str = "reports") -> str:
+        """Gera .md e .json com timestamp; recusa sobrescrever; retorna o caminho do .md."""
+TriageOutcome (Pydantic): thread_id, timestamp, score, severity_band, answers, referrals
+(lista fixa: Autoexclusão gov.br, CVV 188, CAPS/SUS), disclaimer.
+Decisões e requisitos que regem este lote:
+D-06 (score e faixa vêm só da função controlada; nenhum número da saída final é gerado
+por LLM);
+D-08 (toda saída carrega o disclaimer de triagem educacional, tom acolhedor e neutro,
+encaminhamentos fixos);
+RF-09 (relatório com timestamp, faixa, score, as 9 respostas e os encaminhamentos;
+recusa sobrescrever; retorna o caminho);
+RF-10 (saída final: faixa + explicação acolhedora + encaminhamentos fixos + disclaimer
+não clínico + caminho do relatório);
+RNF-05 (relatório contém os insumos do cálculo; nenhum número da saída final vem de
+LLM);
+RNF-06 (PT-BR, linguagem acolhedora e neutra, sem promessa terapêutica);
+aceite 1 (TRIAGE_FAKE_LLM=1 uv run python -m triagem.cli completa uma triagem de ponta
+a ponta e grava relatório).
+TRIAGE_REPORTS_DIR já existe em .env.example, default "reports/" (ARCHITECTURE §9); o
+.gitignore já tem a regra reports/* com exceção !reports/sample* (preparada desde o
+T-01 para o T-20, que grava a amostra versionada; não é tarefa deste lote).
+Correção necessária: a coluna Tarefa do T-17 no PLAN.md diz "modo real (dotenv +
+Gemini)", texto anterior à decisão Q6 (Gemini foi substituído por modelo local via
+endpoint OpenAI-compatible, já implementado em get_llm() desde o T-09). Ler como "modo
+real usa get_llm() (endpoint local, TRIAGE_LLM_BASE_URL/TRIAGE_LLM_MODEL); dotenv
+opcional só para carregar .env local antes de chamar get_llm(), sem qualquer menção a
+Gemini". Não corrigir o texto do PLAN.md em si (é log histórico da decisão original,
+igual às correções cosméticas já registradas em revisões anteriores); a redação de
+README/PRD/ARCHITECTURE que ainda cita Gemini/GOOGLE_API_KEY já está agendada para
+T-21/T-23.
+Requisitos inegociáveis: testes sempre executáveis offline e sem chave de API
+(TRIAGE_FAKE_LLM=1); nenhum segredo versionado; Conventional Commits 1.0.0 em inglês;
+branches curtas integradas via pull request na main; documentação em PT-BR; código e
+identificadores em inglês; não usar travessão longo em nenhum texto gerado. Antes de
+cada pull request, rodar code review (skill superpowers:requesting-code-review, agente
+superpowers:code-reviewer) e security review (skill security-review); rodar também
+auditoria de supply chain se pyproject.toml ou uv.lock mudarem (não devem mudar, T-17
+não precisa de dependência nova: cli.py usa apenas stdlib + langgraph já presentes).
+Stack: Python 3.11, uv, langgraph>=1.2.6,<2, langchain-openai>=1.3,<2, pydantic>=2,<3,
+pytest>=8,<10.
+
+# Papel
+Atue como engenheiro de software sênior especialista em LangGraph e arquitetura de
+agentes, executando o backlog do docs/PLAN.md exatamente na ordem planejada. Nesta
+sessão você implementa APENAS o lote do dia 16/07 (T-15 a T-18). Não implemente
+docs/prompts.md final, examples/, README final nem qualquer tarefa dos dias seguintes
+(T-19 em diante).
+
+# Tarefa
+Antes de começar: confirme que o PR #7 está mergeado e atualize a main local; rode
+uv run pytest para confirmar a base verde (179 testes).
+
+1. T-15 tools.py: TriageOutcome (Pydantic) + write_triage_report(result, out_dir) que
+   grava .md e .json com timestamp em out_dir (default "reports", mas o nó chamador
+   deve respeitar TRIAGE_REPORTS_DIR quando definido), recusa sobrescrever arquivo
+   existente e retorna o caminho do .md. Teste: tests/test_report.py (escrita em
+   tmp_path, conteúdo com as 9 respostas e a faixa, recusa overwrite).
+   Commit: feat(tools): add triage report writer.
+2. T-16 nós score_node (já existe) -> band_node (já existe) -> report_node (novo,
+   monta TriageOutcome com thread_id do config/state, chama write_triage_report,
+   grava report_path) -> finalize (final_answer reescrito para incluir faixa,
+   explicação acolhedora, os encaminhamentos fixos do TriageOutcome, o disclaimer não
+   clínico e o caminho do relatório; nenhum número calculado aqui, só formatação do
+   que já veio de score_node/band_node/report_node, D-06). Atenção: crisis_node e
+   abort_node continuam sem passar por report_node (finalize já faz passthrough
+   quando final_answer foi definido antes; não quebrar esse contrato). Ajustar o
+   diagrama mermaid e a tabela de nós da ARCHITECTURE §3 para refletir report_node de
+   verdade (hoje já aparece no diagrama como nó futuro; passa a existir em código).
+   Teste: tests/test_graph_e2e.py::test_full_triage (score, faixa, report_path e
+   disclaimer presentes; conferir que o arquivo gravado por report_node realmente
+   existe no caminho retornado).
+   Commit: feat(output): assemble verifiable final answer.
+3. T-17 cli.py: loop de sessão com thread_id (um por execução), modo offline
+   (TRIAGE_FAKE_LLM=1, get_llm() resolve para FakeLLM) e modo real (get_llm() resolve
+   para o endpoint local, ver correção no Contexto), renderização das perguntas
+   (payload da pergunta e da oferta, kind) e do resultado final. Teste: manual,
+   TRIAGE_FAKE_LLM=1 uv run python -m triagem.cli ponta a ponta (documentar no corpo
+   da resposta final os comandos exatos usados e a saída observada, já que é teste
+   manual e não pytest).
+   Commit: feat(cli): add interactive triage session.
+4. T-18 fechamento da suíte offline: revisar que os caminhos críticos (crise,
+   fora_dominio, duvida, abort, retry, caminho feliz completo com relatório) estão
+   cobertos e verdes sem .env; adicionar o que faltar. uv run pytest verde em
+   ambiente sem chave.
+   Commit: test: cover critical paths offline.
+
+Regras: um commit convencional por tarefa (mensagens da coluna "Commit sugerido" do
+backlog); teste da coluna "Teste" escrito antes ou junto de cada implementação (TDD,
+vermelho pelo motivo certo antes do verde, exceto o teste manual do T-17); uv run
+pytest verde sem .env ao final de cada tarefa automatizada. Agrupe o trabalho em dois
+pull requests: primeiro T-15 e T-16 (relatório verificável + saída final completa,
+RF-09/RF-10/RNF-05/D-06) e, após o merge dele, T-17 e T-18 juntos (CLI utilizável +
+fechamento de cobertura, aceite 1), cada um em branch curta criada da main atualizada,
+com code review e security review antes de cada gh pr create.
+Registre esta sessão em docs/prompts.md como I-004 (prompt e resultado), no padrão do
+arquivo.
+
+# Formato
+Ao final, imprima: o que foi implementado por tarefa, o contrato final de
+TriageOutcome e write_triage_report, a saída resumida de uv run pytest (verde, sem
+.env), a transcrição do teste manual do CLI offline (T-17), os links dos pull
+requests criados e qualquer desvio do planejado com justificativa. Pare antes de
+qualquer tarefa do dia 17 (T-19 em diante: docs/prompts.md final, examples/, README).
+```
+
+Complementos enviados antes da execução (mensagem livre do usuário, notas de planejamento não incorporadas ao prompt formal): agrupamento dos PRs explicado (T-15+T-16 juntos porque T-16 depende do write_triage_report; T-17+T-18 juntos porque o CLI só faz sentido testar depois da saída final completa, e T-18 varre o pipeline que só existe após o T-17); correção do texto "dotenv + Gemini" do T-17 no PLAN.md sinalizada para a sessão sem reescrever o PLAN.md; nenhuma tarefa executada antes desta sessão, apenas geração do prompt.
+
+Duas decisões foram tomadas via AskUserQuestion no início da execução: (1) merge de cada PR feito pelo próprio Claude Code via `gh pr merge` após as revisões (spec + qualidade por tarefa, holística do PR inteiro, security review) ficarem verdes, mesmo padrão das sessões I-001 a I-003; (2) além do teste manual do T-17 previsto no backlog, adicionar também `tests/test_cli.py` automatizado (funções de render + smoke do `main()` com input simulado), reforçando o fechamento de cobertura do T-18.
+
+**Resultado**: T-15 a T-18 implementados com o padrão subagent-driven-development (um subagente implementador dedicado por tarefa, seguido de revisão de conformidade com o spec e de revisão de qualidade de código por subagentes independentes, com laços de correção quando a revisão de qualidade encontrava achados Important, antes de cada tarefa ser dada como concluída, mais uma revisão holística e uma security review do diff inteiro antes de cada pull request), TDD com teste vermelho pelo motivo certo antes da implementação mínima, em dois pull requests mergeados na main:
+
+- **PR #8** "feat: verifiable triage report and complete final answer" (T-15 e T-16): `TriageOutcome` (Pydantic, com validador exigindo exatamente q1..q9 em `answers`) e `write_triage_report` novos em `tools.py`, gerando `.md`/`.json` com nome derivado de thread_id e timestamp sanitizados por allowlist (defesa contra path traversal), escrita exclusiva atômica (`open(..., "x")`, sem race de sobrescrita) e `REFERRALS`/`DISCLAIMER` como constantes de módulo (fonte única, D-08); `report_node` novo em `nodes.py` (lê thread_id do config do LangGraph, gera o timestamp, chama `write_triage_report` respeitando `TRIAGE_REPORTS_DIR`, grava `report_path`), religado no grafo entre `band_node` e `finalize`; `finalize_node` reescrito com `BAND_EXPLANATIONS` (explicação acolhedora por faixa) somando faixa, score, encaminhamentos, disclaimer e caminho do relatório, preservando o passthrough para crisis/abort/info/fallback; ARCHITECTURE §3 corrigida (o nó terminal chama-se `finalize`, não `final_answer`, que é campo do estado). Antes do PR: revisão de conformidade e de qualidade por tarefa (4 itens Important corrigidos no T-15: timestamp sem sanitização, recusa de overwrite com race check-then-write, `TriageOutcome.answers` sem validação de forma, teste fraco de conteúdo do relatório; 1 item Important corrigido no T-16: `test_full_triage` não verificava a explicação por faixa), revisão holística do PR inteiro (sem achados Critical/Important, 4 sugestões Minor registradas como débito técnico opcional) e security review (sem achados, sanitização por allowlist e escrita atômica avaliadas como suficientes).
+- **PR #9** "feat: interactive CLI session and offline coverage closeout" (T-17 e T-18): `cli.py` novo com sessão interativa de terminal (`main()`, `thread_id` único por processo, loop `interrupt`/`Command(resume=...)`, funções puras de renderização `render_question`/`render_offer`/`render_payload`, `load_dotenv_if_available` estritamente opcional sem dependência nova); fechamento da suíte offline com testes de regressão explícitos de que crise/abort/duvida/fora_dominio nunca gravam relatório (`report_path is None`) e que `report_node` respeita `TRIAGE_REPORTS_DIR` quando chamado diretamente. Antes do PR: revisão de conformidade e de qualidade por tarefa (2 itens Important corrigidos no T-17: exceções não tratadas de `report_node` propagando como traceback cru ao usuário do terminal, texto de boas-vindas prometendo continuidade que o grafo não entrega para dúvida/fora de domínio; 1 item Important corrigido no T-18: dois testes novos duplicavam integralmente a sequência de invoke de testes já existentes em vez de consolidar a asserção nova nos testes originais), revisão holística do PR inteiro e security review antes do `gh pr create`.
+
+`uv run pytest` verde ao final de cada tarefa e da sessão (198 testes, sem `.env`, sem chave de API).
+
+**Transcrição do teste manual do CLI offline (T-17)**:
+```
+$ printf "quero começar o teste\n0\n1\n2\n3\n0\n1\n2\n3\n3\n" | TRIAGE_FAKE_LLM=1 uv run python -m triagem.cli
+Agente: Olá! Sou o agente de triagem do Jogo Limpo Lab. [...]
+
+Você: Agente:
+Pergunta 1 de 9: [...]
+Escala: 0 = Nunca, 1 = Às vezes, 2 = Na maioria das vezes, 3 = Quase sempre
+[...]
+Você: Agente:
+Resultado da triagem PGSI: risco alto, pontuação 15 de 27.
+[...]
+Relatório gravado em: <caminho>/triagem-<thread>-<timestamp>.md
+```
+Percorreu as 9 perguntas, calculou score 15/faixa alto e gravou o relatório com sucesso, exit code 0. Também validado o caminho de erro de configuração (sem `TRIAGE_FAKE_LLM` nem endpoint real configurado): imprime "Erro de configuração: ..." e retorna exit code 2, sem propagar exceção crua.
+
+**Desvios do planejado, com justificativa**:
+1. `tests/test_cli.py` automatizado além do teste manual do T-17 (6 testes de render + smoke do `main()`, mais 1 teste de tratamento de exceção genérica adicionado durante a revisão de qualidade): decisão do usuário via AskUserQuestion, reforça o aceite 1 e o fechamento de cobertura do T-18 sem contrariar o backlog original (que só pedia o teste manual).
+2. `finalize_node` também seta `phase: "resultado"` (T-16), não pedido explicitamente no prompt: completa o `Literal["acolhimento", "triagem", "crise", "resultado"]` já existente em `TriageState`, espelhando como `crisis_node` já seta `phase="crise"`; sem esse ajuste a faixa "resultado" nunca seria alcançada por nenhum nó.
+3. `report_node` recebe `config: RunnableConfig` além de `state` (T-16): primeiro nó do grafo a fazer isso; necessário porque `thread_id` só existe em `config["configurable"]["thread_id"]`, nunca em `TriageState`.
+4. `cli.py` ganhou `except Exception` genérico ao redor do laço principal, além dos `except (EOFError, KeyboardInterrupt)`/`except RuntimeError` já previstos no prompt (T-17): apontado na revisão de qualidade após reprodução concreta de um `PermissionError` cru vazando de `report_node` (diretório de relatórios sem permissão de escrita); sem o catch-all, um erro de I/O no meio de uma sessão interativa quebraria com traceback completo em vez de mensagem amigável.
+5. Texto de `WELCOME` no `cli.py` (T-17) ajustado para não prometer continuidade após uma dúvida sobre o teste: o grafo resolve `intent=duvida`/`fora_dominio` em um único turno sem `interrupt()`, encerrando a sessão; a copy original do prompt sugeria que dava para "perguntar sobre o teste" e seguir depois, o que não corresponde ao comportamento real do grafo (pré-existente, não alterado nesta sessão).
+6. Testes além dos nomeados no backlog do T-18 (`test_report_node_honors_reports_dir_env` chamando `report_node` diretamente, e as asserções `report_path is None` adicionadas em `test_crisis_mid_questionnaire`/`test_abort_after_three_invalid_attempts`/`test_duvida_reaches_info_node`/`test_fora_dominio_reaches_fallback_node`): decorrência da tarefa T-18 conforme especificada no prompt, mas com uma correção de rota durante a revisão de qualidade (dois testes novos que duplicavam sequências de invoke inteiras foram consolidados como asserções extras nos testes já existentes, em vez de manter testes separados).
+7. Os dois pull requests mergeados dentro da própria sessão via `gh pr merge`, a pedido do usuário (decisão via AskUserQuestion registrada acima).
+
