@@ -12,6 +12,9 @@ import os
 
 from triagem.parsing import normalize, parse_answer_deterministic
 
+LLM_TIMEOUT_SECONDS = 30
+LLM_MAX_RETRIES = 2
+
 _DUVIDA_MARKERS = [
     "o que e",
     "como funciona",
@@ -169,4 +172,6 @@ def get_llm():
         model=model,
         # Local MLX/LM Studio endpoints ignore the key, but the client requires one.
         api_key=os.environ.get("OPENAI_API_KEY", "not-needed"),
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=LLM_MAX_RETRIES,
     )

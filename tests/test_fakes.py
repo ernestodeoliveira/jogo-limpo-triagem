@@ -6,7 +6,14 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel
 
-from triagem.fakes import FakeAnswerParser, FakeClassifier, FakeLLM, get_llm
+from triagem.fakes import (
+    LLM_MAX_RETRIES,
+    LLM_TIMEOUT_SECONDS,
+    FakeAnswerParser,
+    FakeClassifier,
+    FakeLLM,
+    get_llm,
+)
 
 
 class IntentProbe(BaseModel):
@@ -126,3 +133,16 @@ def test_get_llm_builds_chatopenai_when_configured(monkeypatch):
     llm = get_llm()  # constructing the client makes no network call
     assert isinstance(llm, ChatOpenAI)
     assert llm.model_name == "test-model"
+
+
+def test_get_llm_sets_timeout_and_max_retries(monkeypatch):
+    monkeypatch.setenv("TRIAGE_FAKE_LLM", "0")
+    monkeypatch.setenv("TRIAGE_LLM_BASE_URL", "http://localhost:8080/v1")
+    monkeypatch.setenv("TRIAGE_LLM_MODEL", "test-model")
+
+    assert LLM_TIMEOUT_SECONDS == 30
+    assert LLM_MAX_RETRIES == 2
+
+    llm = get_llm()
+    assert llm.request_timeout == LLM_TIMEOUT_SECONDS
+    assert llm.max_retries == LLM_MAX_RETRIES
