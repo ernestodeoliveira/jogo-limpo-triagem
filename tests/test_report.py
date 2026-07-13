@@ -145,7 +145,7 @@ def test_report_node_honors_reports_dir_env(tmp_path, monkeypatch):
     custom_dir = tmp_path / "algum_subdir"
     monkeypatch.setenv("TRIAGE_REPORTS_DIR", str(custom_dir))
 
-    state = initial_state("2")
+    state = initial_state("irrelevante")
     state["score"] = 15
     state["severity_band"] = "alto"
     state["answers"] = {f"q{i}": 1 for i in range(1, 10)}

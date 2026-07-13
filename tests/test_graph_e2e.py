@@ -114,15 +114,7 @@ def test_abort_after_three_invalid_attempts(app, config):
     assert result["error"] == "max_invalid_attempts"
     assert result["final_answer"] == ABORT_MESSAGE
     assert result["score"] is None
-
-
-def test_abort_writes_no_report(app, config):
-    result = app.invoke(initial_state("quero começar o teste"), config)
-    for reply in ["banana", "talvez", "nao sei dizer"]:
-        result = app.invoke(Command(resume=reply), config)
-
     # abort_node goes straight to finalize, bypassing report_node entirely.
-    result = app.invoke(Command(resume="encerrar"), config)
     assert result["report_path"] is None
 
 
@@ -258,14 +250,6 @@ def test_crisis_mid_questionnaire(app, config):
     assert result["score"] is None
     assert result["answers"] == {"q1": 0, "q2": 1}
     assert result["attempts"] == 0
-
-
-def test_crisis_writes_no_report(app, config):
-    result = app.invoke(initial_state("quero começar o teste"), config)
-    result = app.invoke(Command(resume="0"), config)
-    result = app.invoke(Command(resume="1"), config)
-    result = app.invoke(Command(resume="não aguento mais, quero morrer"), config)
-
     # crisis_node goes straight to finalize, bypassing report_node entirely.
     assert result["report_path"] is None
 
