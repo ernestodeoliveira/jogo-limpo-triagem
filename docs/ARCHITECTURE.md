@@ -34,30 +34,38 @@ Padrões herdados do repositório de referência (stack-sentinel): TypedDict + r
 ```mermaid
 flowchart TD
     START --> safety_gate
-    safety_gate -- crise --> crisis_node --> final_answer --> END
+    safety_gate -- crise --> crisis_node --> final_answer
     safety_gate -- ok --> classify_intent
     classify_intent -- fora_dominio --> fallback --> final_answer
     classify_intent -- duvida --> info_node --> final_answer
     classify_intent -- iniciar/responder --> ask_question
     ask_question -- "interrupt()" --> validate_answer
+    validate_answer -- crise --> crisis_node
     validate_answer -- inválida (attempts < 3) --> ask_question
-    validate_answer -- inválida (attempts == 3) --> abort_node --> final_answer
+    validate_answer -- inválida (attempts == 3) --> retry_offer
+    retry_offer -- "interrupt()" --> retry_offer
+    retry_offer -- crise --> crisis_node
+    retry_offer -- tentar de novo --> ask_question
+    retry_offer -- encerrar/não reconhecido --> abort_node --> final_answer
     validate_answer -- válida e current_question < 9 --> ask_question
     validate_answer -- válida e current_question == 9 --> score_node
     score_node --> band_node --> report_node --> final_answer
 ```
 
+Crise tem precedência absoluta (D-04): `safety_gate` checa a mensagem inicial antes de qualquer classificação de intenção; `validate_answer` e `retry_offer` checam cada resposta retomada via `Command(resume=...)` antes de interpretá-la (Q4), inclusive quando a pessoa está no meio da oferta de tentar de novo/encerrar. Em qualquer um dos três pontos, detecção de crise desvia direto para `crisis_node`, que por sua vez alimenta `finalize` (`final_answer` já vem pronto, `finalize_node` só repassa).
+
 ### Tabela de nós
 
 | Nó | Tipo | Responsabilidade |
 |---|---|---|
-| `safety_gate` | determinístico + LLM opcional | Heurística de termos de emergência; em dúvida, classificação estruturada; seta `crisis_flag` |
-| `crisis_node` | determinístico | Mensagem de acolhimento + CVV 188 + SAMU 192 + orientação; encerra a triagem da sessão |
+| `safety_gate` | determinístico | Heurística de termos de emergência (`CRISIS_TERMS`/`check_crisis` em `safety.py`); seta `crisis_flag` antes de qualquer classificação de intenção |
+| `crisis_node` | determinístico | Mensagem de acolhimento + CVV 188 + SAMU 192 + orientação; encerra a triagem da sessão via `finalize` |
 | `classify_intent` | LLM structured output | `IntentResult` (Pydantic, `Literal`), padrão do `classify.py` de referência |
 | `info_node` | determinístico | Explica o teste, a escala e a privacidade (conteúdo estático) |
 | `ask_question` | determinístico + `interrupt()` | Entrega o item atual com escala; pausa aguardando resposta |
-| `validate_answer` | determinístico + LLM fallback | Parser 0-3; controla `attempts`; grava em `answers`; avança `current_question` |
-| `abort_node` | determinístico | Encerramento educado após 3 tentativas inválidas, com recursos |
+| `validate_answer` | determinístico + LLM fallback | Checa crise antes do parser (Q4/D-04) e roteia para `crisis_node` se detectada; parser 0-3; controla `attempts`; grava em `answers`; avança `current_question` |
+| `retry_offer` | determinístico + `interrupt()` | Após 3 tentativas inválidas, oferece tentar de novo ou encerrar; idempotente antes do `interrupt()` (D-09/R-02); checa crise na resposta retomada com precedência sobre a lógica de tentar/encerrar, sem resetar `attempts` (D-04); reseta `attempts` só na resposta que escolhe tentar de novo |
+| `abort_node` | determinístico | Encerramento educado após a pessoa optar por encerrar (ou resposta não reconhecida à oferta), com recursos |
 | `score_node` | ferramenta | `compute_pgsi_score(answers)` |
 | `band_node` | determinístico | Score → faixa (0; 1-2; 3-7; 8-27) |
 | `report_node` | ferramenta | `write_triage_report(...)`; guarda `report_path` |

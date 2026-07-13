@@ -49,3 +49,16 @@ def test_responder_default_enters_question_cycle(app, config):
 def test_intent_result_rejects_unknown_intent():
     with pytest.raises(ValidationError):
         IntentResult(intent="outro")
+
+
+def test_crisis_precedes_intent(app, config):
+    # Fresh run, first message: crisis must short-circuit before classify_intent
+    # ever runs (absolute precedence, D-04).
+    result = app.invoke(initial_state("quero me matar"), config)
+
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["intent"] is None
+    assert result["crisis_flag"] is True
+    assert "188" in result["final_answer"]
+    assert "192" in result["final_answer"]
