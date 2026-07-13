@@ -3,7 +3,12 @@
 import pytest
 
 from triagem.fakes import FakeLLM
-from triagem.parsing import make_answer_parser, normalize, parse_answer_deterministic
+from triagem.parsing import (
+    PARSE_SYSTEM_PROMPT,
+    make_answer_parser,
+    normalize,
+    parse_answer_deterministic,
+)
 
 
 @pytest.mark.parametrize(
@@ -81,9 +86,10 @@ def test_embedded_instruction_is_invalid(text):
 class SpyAnswerLLM:
     """Local spy standing in for a real chat model.
 
-    with_structured_output returns a runnable that records the user message
-    text of each invocation into self.calls and always returns schema(value=
-    self.value), where self.value is fixed when the spy is constructed.
+    with_structured_output returns a runnable that records the full messages
+    argument of each invocation into self.calls and always returns
+    schema(value=self.value), where self.value is fixed when the spy is
+    constructed.
     """
 
     def __init__(self, value):
@@ -95,7 +101,7 @@ class SpyAnswerLLM:
 
         class _Runnable:
             def invoke(self, messages):
-                spy.calls.append(messages[-1][1])
+                spy.calls.append(messages)
                 return schema(value=spy.value)
 
         return _Runnable()
@@ -110,6 +116,10 @@ def test_llm_fallback_used_only_on_table_miss():
 
     assert parse("de jeito nenhum") == 0
     assert len(spy.calls) == 1
+    assert spy.calls[0] == [
+        ("system", PARSE_SYSTEM_PROMPT),
+        ("user", "de jeito nenhum"),
+    ]
 
 
 def test_llm_fallback_none_counts_as_invalid():
