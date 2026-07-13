@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 EXPECTED_ITEM_IDS = [f"q{i}" for i in range(1, 10)]
 EXPECTED_SCALE_KEYS = ["0", "1", "2", "3"]
@@ -120,37 +120,44 @@ class TriageOutcome(BaseModel):
     referrals: list[str] = Field(default_factory=lambda: list(REFERRALS))
     disclaimer: str = DISCLAIMER
 
+    @model_validator(mode="after")
+    def _check_answers_complete(self) -> "TriageOutcome":
+        """Require exactly q1..q9 so the .md and .json never diverge on inputs."""
+        missing = [
+            item_id for item_id in EXPECTED_ITEM_IDS if item_id not in self.answers
+        ]
+        if missing:
+            raise ValueError(f"missing answers for: {', '.join(missing)}")
+        extra = sorted(key for key in self.answers if key not in EXPECTED_ITEM_IDS)
+        if extra:
+            raise ValueError(f"unexpected answer keys: {', '.join(extra)}")
+        return self
+
+
+def _sanitize_path_component(value: str, *, max_len: int, fallback: str) -> str:
+    """Defend against path traversal: keep only safe chars, cap length, never empty."""
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", value)[:max_len]
+    return cleaned or fallback
+
 
 def _sanitize_thread_id(thread_id: str) -> str:
-    """Defend against path traversal: keep only safe chars, cap length, never empty."""
-    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", thread_id)[:32]
-    return cleaned or "sem-id"
+    """Sanitize a thread_id for use as a filename component."""
+    return _sanitize_path_component(thread_id, max_len=32, fallback="sem-id")
 
 
-def write_triage_report(result: TriageOutcome, out_dir: str = "reports") -> str:
-    """Write .md and .json report files with a timestamped name; refuses to overwrite.
+def _sanitize_timestamp(timestamp: str) -> str:
+    """Sanitize an ISO-8601 timestamp into a bare filename-safe stamp."""
+    compact = timestamp.replace("-", "").replace(":", "")
+    return _sanitize_path_component(compact, max_len=32, fallback="sem-timestamp")
 
-    Returns the path to the .md file. D-08: single source for referrals/disclaimer.
-    """
-    directory = Path(out_dir)
-    directory.mkdir(parents=True, exist_ok=True)
 
-    thread = _sanitize_thread_id(result.thread_id)
-    stamp = result.timestamp.replace("-", "").replace(":", "")
-    stem = f"triagem-{thread}-{stamp}"
-    md_path = directory / f"{stem}.md"
-    json_path = directory / f"{stem}.json"
-
-    if md_path.exists() or json_path.exists():
-        raise FileExistsError(f"report already exists: {md_path}")
-
+def _render_markdown(result: TriageOutcome) -> str:
+    """Render the PT-BR .md report: score, band, the 9 answers, referrals, disclaimer."""
     answer_lines = "\n".join(
-        f"- {item_id}: {result.answers[item_id]}"
-        for item_id in EXPECTED_ITEM_IDS
-        if item_id in result.answers
+        f"- {item_id}: {result.answers[item_id]}" for item_id in EXPECTED_ITEM_IDS
     )
     referral_lines = "\n".join(f"- {referral}" for referral in result.referrals)
-    markdown = (
+    return (
         "# Relatório de triagem PGSI\n\n"
         f"Thread: {result.thread_id}\n\n"
         f"Data e hora: {result.timestamp}\n\n"
@@ -162,7 +169,38 @@ def write_triage_report(result: TriageOutcome, out_dir: str = "reports") -> str:
         f"{referral_lines}\n\n"
         f"{result.disclaimer}\n"
     )
-    md_path.write_text(markdown, encoding="utf-8")
-    json_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+
+
+def write_triage_report(result: TriageOutcome, out_dir: str = "reports") -> str:
+    """Write .md and .json report files with a timestamped name; refuses to overwrite.
+
+    Uses exclusive-create ("x" mode) so the overwrite refusal is atomic, not a
+    check-then-write race. Returns the path to the .md file. D-08: single
+    source for referrals/disclaimer.
+    """
+    directory = Path(out_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    thread = _sanitize_thread_id(result.thread_id)
+    stamp = _sanitize_timestamp(result.timestamp)
+    stem = f"triagem-{thread}-{stamp}"
+    md_path = directory / f"{stem}.md"
+    json_path = directory / f"{stem}.json"
+
+    markdown = _render_markdown(result)
+    payload = result.model_dump_json(indent=2)
+
+    try:
+        with md_path.open("x", encoding="utf-8") as md_file:
+            md_file.write(markdown)
+    except FileExistsError:
+        raise FileExistsError(f"report already exists: {md_path}") from None
+
+    try:
+        with json_path.open("x", encoding="utf-8") as json_file:
+            json_file.write(payload)
+    except FileExistsError:
+        md_path.unlink()
+        raise FileExistsError(f"report already exists: {json_path}") from None
 
     return str(md_path)
