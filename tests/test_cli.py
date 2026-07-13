@@ -84,3 +84,23 @@ def test_main_eof_exits_cleanly(monkeypatch, capsys):
     from triagem.cli import GOODBYE
 
     assert GOODBYE in captured.out
+
+
+def test_main_unexpected_exception_is_caught_gracefully(monkeypatch, capsys):
+    """A raw runtime failure inside app.invoke() (e.g. PermissionError from
+    report_node when TRIAGE_REPORTS_DIR is not writable) must not leak a
+    traceback to the terminal; main() should degrade gracefully instead.
+    """
+
+    class ExplodingApp:
+        def invoke(self, *args, **kwargs):
+            raise PermissionError("disk full")
+
+    monkeypatch.setattr("triagem.cli.build_agent", lambda: ExplodingApp())
+    monkeypatch.setattr("builtins.input", lambda *a: "quero começar o teste")
+
+    exit_code = main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Erro inesperado" in captured.out
