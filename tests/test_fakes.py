@@ -146,3 +146,31 @@ def test_get_llm_sets_timeout_and_max_retries(monkeypatch):
     llm = get_llm()
     assert llm.request_timeout == LLM_TIMEOUT_SECONDS
     assert llm.max_retries == LLM_MAX_RETRIES
+
+
+def test_get_llm_warns_on_non_local_endpoint(monkeypatch, capsys):
+    monkeypatch.setenv("TRIAGE_FAKE_LLM", "0")
+    monkeypatch.setenv("TRIAGE_LLM_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("TRIAGE_LLM_MODEL", "test-model")
+
+    get_llm()
+
+    assert "api.example.com" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://localhost:8080/v1",
+        "http://127.0.0.1:1234/v1",
+        "http://[::1]:8080/v1",
+    ],
+)
+def test_get_llm_local_endpoint_no_warning(monkeypatch, capsys, base_url):
+    monkeypatch.setenv("TRIAGE_FAKE_LLM", "0")
+    monkeypatch.setenv("TRIAGE_LLM_BASE_URL", base_url)
+    monkeypatch.setenv("TRIAGE_LLM_MODEL", "test-model")
+
+    get_llm()
+
+    assert capsys.readouterr().err == ""

@@ -9,11 +9,15 @@ the real client targets a local OpenAI-compatible endpoint (decision Q6).
 """
 
 import os
+import sys
+from urllib.parse import urlparse
 
 from triagem.parsing import normalize, parse_answer_deterministic
 
 LLM_TIMEOUT_SECONDS = 30
 LLM_MAX_RETRIES = 2
+
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 _DUVIDA_MARKERS = [
     "o que e",
@@ -150,6 +154,17 @@ class FakeLLM:
         raise ValueError(f"no fake behavior registered for schema {name}")
 
 
+def _warn_if_non_local_endpoint(base_url: str) -> None:
+    """Warn, but do not block, when TRIAGE_LLM_BASE_URL is not a local host (A-02)."""
+    host = urlparse(base_url).hostname or ""
+    if host.lower() not in _LOCAL_HOSTS:
+        print(
+            f"Aviso: TRIAGE_LLM_BASE_URL aponta para um host não local ({host!r}). "
+            "Respostas dos usuários serão enviadas para esse endpoint.",
+            file=sys.stderr,
+        )
+
+
 def get_llm():
     """Factory honoring TRIAGE_FAKE_LLM (RNF-02).
 
@@ -165,6 +180,8 @@ def get_llm():
             "Set TRIAGE_LLM_BASE_URL and TRIAGE_LLM_MODEL for the local endpoint, "
             "or set TRIAGE_FAKE_LLM=1 for offline mode."
         )
+    _warn_if_non_local_endpoint(base_url)
+
     from langchain_openai import ChatOpenAI  # lazy import keeps offline path light
 
     return ChatOpenAI(
