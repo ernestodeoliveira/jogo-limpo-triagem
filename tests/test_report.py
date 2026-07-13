@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from triagem.nodes import report_node
+from triagem.state import initial_state
 from triagem.tools import (
     TriageOutcome,
     _sanitize_thread_id,
@@ -134,3 +136,23 @@ def test_sanitize_thread_id_strips_unsafe_chars_and_truncates():
     assert _sanitize_thread_id("...") == "sem-id"
     assert _sanitize_thread_id("") == "sem-id"
     assert _sanitize_thread_id("a" * 40) == "a" * 32
+
+
+def test_report_node_honors_reports_dir_env(tmp_path, monkeypatch):
+    # Overrides the offline_env autouse fixture's own TRIAGE_REPORTS_DIR
+    # default, to confirm report_node reads the env var at call time rather
+    # than a value baked in earlier.
+    custom_dir = tmp_path / "algum_subdir"
+    monkeypatch.setenv("TRIAGE_REPORTS_DIR", str(custom_dir))
+
+    state = initial_state("2")
+    state["score"] = 15
+    state["severity_band"] = "alto"
+    state["answers"] = {f"q{i}": 1 for i in range(1, 10)}
+    config = {"configurable": {"thread_id": "thread-report-env"}}
+
+    result = report_node(state, config)
+
+    report_path = Path(result["report_path"])
+    assert report_path.resolve().is_relative_to(custom_dir.resolve())
+    assert report_path.is_file()
