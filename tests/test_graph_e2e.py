@@ -5,13 +5,16 @@ Command(resume=...), per decision D-09. Payload access goes through the
 canonical read_interrupt_payload helper (risk R-03).
 """
 
+import json
+from pathlib import Path
+
 import pytest
 from langgraph.types import Command
 
 from triagem.graph import read_interrupt_payload
-from triagem.nodes import ABORT_MESSAGE, RETRY_HINT, interpret_offer_reply
+from triagem.nodes import ABORT_MESSAGE, BAND_EXPLANATIONS, RETRY_HINT, interpret_offer_reply
 from triagem.state import initial_state
-from triagem.tools import load_pgsi_questions, load_pgsi_scale
+from triagem.tools import DISCLAIMER, load_pgsi_questions, load_pgsi_scale
 
 HAPPY_REPLIES = ["0", "1", "2", "3", "0", "1", "2", "3", "3"]  # PGSI score 15
 
@@ -290,3 +293,36 @@ def test_crisis_at_attempts_boundary_wins_over_retry_offer(app, config):
     assert "192" in result["final_answer"]
     assert result["attempts"] == 2
     assert result["error"] is None
+
+
+def test_full_triage(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in HAPPY_REPLIES:
+        result = app.invoke(Command(resume=reply), config)
+
+    assert result["score"] == 15
+    assert result["severity_band"] == "alto"
+    assert result["phase"] == "resultado"
+
+    report_path = result["report_path"]
+    assert report_path is not None
+    assert config["configurable"]["thread_id"] in Path(report_path).name
+
+    final = result["final_answer"]
+    assert "risco alto" in final
+    assert "15" in final
+    assert BAND_EXPLANATIONS["alto"] in final
+    assert DISCLAIMER in final
+    assert report_path in final
+    assert "188" in final and "gov.br" in final and "CAPS" in final
+
+    md = Path(report_path)
+    assert md.exists() and md.suffix == ".md"
+    content = md.read_text(encoding="utf-8")
+    for i in range(1, 10):
+        assert f"q{i}" in content
+    assert "alto" in content
+
+    data = json.loads(md.with_suffix(".json").read_text(encoding="utf-8"))
+    assert data["score"] == 15
+    assert data["answers"]["q9"] == 3
