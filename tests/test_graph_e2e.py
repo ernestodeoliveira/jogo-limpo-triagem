@@ -266,3 +266,27 @@ def test_crisis_at_retry_offer(app, config):
     assert result["crisis_flag"] is True
     assert "188" in result["final_answer"]
     assert "192" in result["final_answer"]
+
+
+def test_crisis_at_attempts_boundary_wins_over_retry_offer(app, config):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in ["banana", "talvez"]:
+        result = app.invoke(Command(resume=reply), config)
+
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["kind"] == "question"
+    assert result["attempts"] == 2
+
+    # The 3rd reply would otherwise hit MAX_ATTEMPTS and route to
+    # retry_offer, but it is itself a crisis phrase: the crisis check in
+    # validate_answer_node runs before the parser/attempts increment, so it
+    # must short-circuit straight to crisis_node instead (D-04).
+    result = app.invoke(Command(resume="não aguento mais, quero morrer"), config)
+    assert read_interrupt_payload(result) is None
+    assert "__interrupt__" not in result
+    assert result["crisis_flag"] is True
+    assert result["phase"] == "crise"
+    assert "188" in result["final_answer"]
+    assert "192" in result["final_answer"]
+    assert result["attempts"] == 2
+    assert result["error"] is None
