@@ -1,5 +1,6 @@
 """Tests for the deterministic offline fakes and the get_llm factory (T-09)."""
 
+import re
 from typing import Literal
 
 import pytest
@@ -83,6 +84,14 @@ def test_fake_llm_rejects_unknown_schema():
 
     with pytest.raises(ValueError, match="UnknownProbe"):
         FakeLLM().with_structured_output(UnknownProbe)
+
+
+def test_fake_llm_error_handles_schema_without_name():
+    # A plain instance (not a class) has no __name__; the error message must
+    # fall back to repr() instead of raising AttributeError.
+    schema = object()
+    with pytest.raises(ValueError, match=re.escape(repr(schema))):
+        FakeLLM().with_structured_output(schema)
 
 
 def test_structured_runnable_reads_last_message_content():

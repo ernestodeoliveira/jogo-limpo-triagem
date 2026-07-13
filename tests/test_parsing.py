@@ -1,8 +1,9 @@
-"""Tests for the deterministic answer parser (T-11)."""
+"""Tests for the deterministic answer parser (T-11) and its LLM fallback (T-12)."""
 
 import pytest
 
-from triagem.parsing import normalize, parse_answer_deterministic
+from triagem.fakes import FakeLLM
+from triagem.parsing import make_answer_parser, normalize, parse_answer_deterministic
 
 
 @pytest.mark.parametrize(
@@ -75,3 +76,53 @@ def test_ambiguous_or_off_table_is_none(text):
 )
 def test_embedded_instruction_is_invalid(text):
     assert parse_answer_deterministic(text) is None
+
+
+class SpyAnswerLLM:
+    """Local spy standing in for a real chat model.
+
+    with_structured_output returns a runnable that records the user message
+    text of each invocation into self.calls and always returns schema(value=
+    self.value), where self.value is fixed when the spy is constructed.
+    """
+
+    def __init__(self, value):
+        self.value = value
+        self.calls = []
+
+    def with_structured_output(self, schema):
+        spy = self
+
+        class _Runnable:
+            def invoke(self, messages):
+                spy.calls.append(messages[-1][1])
+                return schema(value=spy.value)
+
+        return _Runnable()
+
+
+def test_llm_fallback_used_only_on_table_miss():
+    spy = SpyAnswerLLM(value=0)
+    parse = make_answer_parser(spy)
+
+    assert parse("2") == 2
+    assert spy.calls == []
+
+    assert parse("de jeito nenhum") == 0
+    assert len(spy.calls) == 1
+
+
+def test_llm_fallback_none_counts_as_invalid():
+    spy = SpyAnswerLLM(value=None)
+    parse = make_answer_parser(spy)
+
+    assert parse("qualquer coisa fora da tabela") is None
+
+
+def test_llm_fallback_with_fake_llm():
+    # FakeAnswerParser reuses the same table internally, so an off-table
+    # answer is never "rescued" offline (see FakeAnswerParser's docstring).
+    parse = make_answer_parser(FakeLLM())
+
+    assert parse("quase sempre") == 3
+    assert parse("xyz") is None

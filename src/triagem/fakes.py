@@ -112,8 +112,13 @@ class FakeAnswerParser:
 
     Exact match keeps "sempre" from swallowing "quase sempre" and makes any
     instruction-like input fall to None instead of being obeyed (D-03).
-    No graph node consumes this before T-12; the class ships with T-09 so the
-    offline surface is complete.
+    This is the offline stand-in for BOTH the deterministic path and the
+    make_answer_parser LLM fallback path (T-12): FakeLLM.with_structured_output
+    dispatches here for any schema with a "value" field, whether it is called
+    directly or invoked as the fallback after a table miss. Because both
+    paths reuse the same table, an off-table answer can never be "rescued"
+    offline; this is intentional, not a bug, and only the real LLM can
+    resolve answers outside ANSWER_TABLE.
     """
 
     def with_structured_output(self, schema, **kwargs):
@@ -138,7 +143,8 @@ class FakeLLM:
             return FakeClassifier().with_structured_output(schema, **kwargs)
         if "value" in fields:
             return FakeAnswerParser().with_structured_output(schema, **kwargs)
-        raise ValueError(f"no fake behavior registered for schema {schema.__name__}")
+        name = getattr(schema, "__name__", repr(schema))
+        raise ValueError(f"no fake behavior registered for schema {name}")
 
 
 def get_llm():
