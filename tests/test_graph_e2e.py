@@ -5,10 +5,11 @@ Command(resume=...), per decision D-09. Payload access goes through the
 canonical read_interrupt_payload helper (risk R-03).
 """
 
+import pytest
 from langgraph.types import Command
 
 from triagem.graph import read_interrupt_payload
-from triagem.nodes import ABORT_MESSAGE, RETRY_HINT
+from triagem.nodes import ABORT_MESSAGE, RETRY_HINT, interpret_offer_reply
 from triagem.state import initial_state
 from triagem.tools import load_pgsi_questions, load_pgsi_scale
 
@@ -190,3 +191,40 @@ def test_offer_unrecognized_reply_aborts(app, config):
     assert result["error"] == "max_invalid_attempts"
     assert result["final_answer"] == ABORT_MESSAGE
     assert result["score"] is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "tentar de novo",
+        "tentar novamente",
+        "quero tentar de novo",
+        "tentar",
+        "continuar",
+        "de novo",
+        "novamente",
+        "sim",
+        "TENTAR DE NOVO",
+        "  tentar de novo  ",
+        "Tentar De Novo",
+    ],
+)
+def test_interpret_offer_reply_recognizes_retry_choices(text):
+    assert interpret_offer_reply(text) == "retry"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "não",
+        "nao",
+        "encerrar",
+        "parar",
+        "xyzzy",
+        "",
+        # Negation trap: containment would wrongly match "tentar de novo".
+        "não quero tentar de novo",
+    ],
+)
+def test_interpret_offer_reply_defaults_to_abort(text):
+    assert interpret_offer_reply(text) == "abort"
