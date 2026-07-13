@@ -1,5 +1,7 @@
 # Jogo Limpo Triagem
 
+[![CI](https://github.com/ernestodeoliveira/jogo-limpo-triagem/actions/workflows/ci.yml/badge.svg)](https://github.com/ernestodeoliveira/jogo-limpo-triagem/actions/workflows/ci.yml)
+
 Agente conversacional de triagem de risco relacionado a apostas, construído com LangGraph. Protótipo do Jogo Limpo Lab.
 
 > Aviso: este projeto é um protótipo educacional de triagem com encaminhamento. Não realiza diagnóstico, não substitui avaliação profissional e não presta aconselhamento clínico.
