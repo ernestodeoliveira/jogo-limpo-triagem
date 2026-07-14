@@ -193,13 +193,13 @@ class SelfConsistencyLLM:
 
     def __init__(self, llm, samples: int = SELF_CONSISTENCY_SAMPLES):
         self.llm = llm
-        self._samples = samples
+        self.samples = samples
 
     def with_structured_output(self, schema, **kwargs):
         structured = self.llm.with_structured_output(schema, **kwargs)
         if "value" not in getattr(schema, "model_fields", {}):
             return structured
-        return _MajorityVoteRunnable(schema, structured, self._samples)
+        return _MajorityVoteRunnable(schema, structured, self.samples)
 
 
 def _warn_if_non_local_endpoint(base_url: str) -> None:
@@ -242,4 +242,4 @@ def get_llm():
         timeout=LLM_TIMEOUT_SECONDS,
         max_retries=LLM_MAX_RETRIES,
     )
-    return SelfConsistencyLLM(real_llm)
+    return SelfConsistencyLLM(real_llm, samples=SELF_CONSISTENCY_SAMPLES)
