@@ -175,6 +175,12 @@ class _MajorityVoteRunnable:
         results = self._structured.batch(
             [input] * self._samples, config=config, return_exceptions=True
         )
+        if all(isinstance(result, Exception) for result in results):
+            # Every sample failed: almost certainly an infrastructure issue
+            # (e.g. the endpoint is down), not an ambiguous answer. Surface
+            # it instead of silently voting None and burning one of the
+            # user's limited attempts (B-16 review finding).
+            raise results[0]
         values = [
             None if isinstance(result, Exception) else result.value
             for result in results
