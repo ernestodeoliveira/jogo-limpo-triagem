@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -156,3 +158,54 @@ def test_report_node_honors_reports_dir_env(tmp_path, monkeypatch):
     report_path = Path(result["report_path"])
     assert report_path.resolve().is_relative_to(custom_dir.resolve())
     assert report_path.is_file()
+
+
+def test_json_collision_removes_orphan_md(tmp_path):
+    outcome = _make_outcome()
+    compact_timestamp = outcome.timestamp.replace("-", "").replace(":", "")
+    stem = f"triagem-{_sanitize_thread_id(outcome.thread_id)}-{compact_timestamp}"
+    json_path = tmp_path / f"{stem}.json"
+    json_path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        write_triage_report(outcome, out_dir=str(tmp_path))
+
+    md_path = tmp_path / f"{stem}.md"
+    assert not md_path.exists()  # rollback removed the orphaned .md
+    assert json_path.read_text(encoding="utf-8") == "{}"  # pre-existing .json untouched
+
+
+@pytest.mark.skipif(
+    hasattr(os, "getuid") and os.getuid() == 0,
+    reason="root ignores directory permission bits, so this check cannot reproduce PermissionError",
+)
+def test_permission_error_propagates(tmp_path):
+    out_dir = tmp_path / "sem_permissao"
+    out_dir.mkdir()
+    out_dir.chmod(stat.S_IREAD | stat.S_IEXEC)  # read+execute only, no write
+
+    try:
+        with pytest.raises(PermissionError):
+            write_triage_report(_make_outcome(), out_dir=str(out_dir))
+    finally:
+        out_dir.chmod(stat.S_IRWXU)  # restore so tmp_path cleanup can remove it
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("thread\x00id", "threadid"),
+        ("--evil-flag", "--evil-flag"),
+        ("café-com-açúcar", "caf-com-acar"),
+        ("😀😀😀", "sem-id"),
+        ("CON", "CON"),
+        ("NUL.txt", "NULtxt"),
+    ],
+)
+def test_sanitize_thread_id_adversarial_corpus(raw, expected):
+    # Documents current behavior (F-14), not asserted vulnerabilities: a
+    # leading "--" survives because "-" is an allowed filename char (this
+    # value is only ever used as a filename component, never as a CLI
+    # argument), and Windows reserved names pass through unchanged because
+    # the target platform is POSIX.
+    assert _sanitize_thread_id(raw) == expected
