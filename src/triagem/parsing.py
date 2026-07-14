@@ -35,10 +35,14 @@ ANSWER_TABLE = {
 
 
 def normalize(text: str) -> str:
-    """Lowercase, strip accents and punctuation, collapse whitespace."""
+    """Lowercase, strip accents and punctuation, collapse whitespace.
+
+    Keeps '-' so a bare out-of-scale answer like "-1" does not collapse
+    onto the valid table key "1" (B-16 review finding).
+    """
     decomposed = unicodedata.normalize("NFKD", text.lower())
     stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", stripped)).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 -]", " ", stripped)).strip()
 
 
 def parse_answer_deterministic(text: str) -> int | None:
