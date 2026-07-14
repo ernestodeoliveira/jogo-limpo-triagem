@@ -17,6 +17,7 @@ from triagem.graph import build_agent, read_interrupt_payload
 from triagem.nodes import (
     ABORT_MESSAGE,
     BAND_EXPLANATIONS,
+    BAND_LABELS,
     MAX_RETRY_CYCLES,
     RETRY_HINT,
     interpret_offer_reply,
@@ -456,3 +457,118 @@ def test_sixth_retry_cycle_aborts_politely(app, config):
     assert result["final_answer"] == ABORT_MESSAGE
     assert result["error"] == "max_invalid_attempts"
     assert result["score"] is None
+
+
+@pytest.mark.parametrize(
+    ("answers", "expected_band", "expected_score"),
+    [
+        (["0"] * 9, "sem_risco", 0),
+        (["0"] * 8 + ["1"], "baixo", 1),
+        (["1"] * 5 + ["0"] * 4, "moderado", 5),
+        # Score 10, distinct from HAPPY_REPLIES' score of 15 (already covered
+        # by test_full_triage above): still inside the 8-27 "alto" range.
+        (["2"] * 5 + ["0"] * 4, "alto", 10),
+    ],
+)
+def test_final_answer_matches_band(app, config, answers, expected_band, expected_score):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in answers:
+        payload = read_interrupt_payload(result)
+        assert payload is not None
+        result = app.invoke(Command(resume=reply), config)
+
+    assert read_interrupt_payload(result) is None
+    assert result["score"] == expected_score
+    assert result["severity_band"] == expected_band
+    assert BAND_LABELS[expected_band] in result["final_answer"]
+    assert BAND_EXPLANATIONS[expected_band] in result["final_answer"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_value", "expected_attempts"),
+    [
+        (2, 2, 0),
+        ({"unexpected": "shape"}, None, 1),
+        ([1, 2, 3], None, 1),
+    ],
+)
+def test_resume_with_non_string_payloads(
+    app, config, payload, expected_value, expected_attempts
+):
+    app.invoke(initial_state("quero começar o teste"), config)
+    result = app.invoke(Command(resume=payload), config)
+
+    if expected_value is None:
+        # nodes.py coerces any non-string resume payload with str() (F-04);
+        # neither of these stringify to a table entry, so each counts as an
+        # invalid attempt on the same question rather than crashing.
+        current = read_interrupt_payload(result)
+        assert current is not None
+        assert current["question_id"] == "q1"
+        assert result["attempts"] == expected_attempts
+    else:
+        # An int payload is the one non-string case that stringifies into a
+        # valid table entry ("2" -> 2), so it is silently accepted (F-04).
+        assert result["answers"]["q1"] == expected_value
+        assert result["attempts"] == expected_attempts
+
+
+def test_resume_with_none_payload_crashes_before_reaching_nodes(app, config):
+    # Correction to the original hypothesis behind this test (F-04): a
+    # None resume payload was expected to be str()-coerced by ask_question
+    # just like the int/dict/list cases above, ending in a normal invalid
+    # attempt. In reality, Command(resume=None) never reaches nodes.py at
+    # all. langgraph's own SyncPregelLoop._first (pregel/_loop.py) treats a
+    # resume value of None as "no resume was provided" (the same sentinel
+    # meaning as app.invoke(None, config)): the branch that would set its
+    # internal resume_is_map flag is skipped, but a few lines later that
+    # flag is read unconditionally, raising UnboundLocalError from inside
+    # langgraph itself. So unlike the other three non-string payloads, None
+    # is not a graceful invalid-attempt case: it is an unhandled crash at
+    # the graph-runtime layer, a stronger version of F-04 than originally
+    # described.
+    app.invoke(initial_state("quero começar o teste"), config)
+    with pytest.raises(UnboundLocalError):
+        app.invoke(Command(resume=None), config)
+
+
+def test_combining_character_grapheme_exceeds_length_limit():
+    llm = CountingLLM()
+    app = build_agent(llm)
+    config = {"configurable": {"thread_id": uuid4().hex}}
+
+    app.invoke(initial_state("quero começar o teste"), config)
+    baseline = list(llm.schema_calls)
+
+    # 300 graphemes of base "a" + a combining acute accent (U+0301) is 600
+    # Unicode code points: MAX_ANSWER_LENGTH counts code points via len(),
+    # not visual graphemes, so this is rejected even though it "looks" like
+    # 300 characters (F-13).
+    combining_answer = ("a" + "́") * 300
+    assert len(combining_answer) == 600
+
+    result = app.invoke(Command(resume=combining_answer), config)
+
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["question_id"] == "q1"
+    assert result["attempts"] == 1
+    assert llm.schema_calls == baseline
+
+
+def test_single_code_point_emoji_at_length_limit_reaches_parser():
+    llm = CountingLLM()
+    app = build_agent(llm)
+    config = {"configurable": {"thread_id": uuid4().hex}}
+
+    app.invoke(initial_state("quero começar o teste"), config)
+
+    # 300 single-code-point emoji: len() == 300, at the limit but not over
+    # it, so (unlike the combining-character grapheme case) this still
+    # reaches the LLM fallback (F-13) even though it is visually "longer".
+    emoji_answer = "😊" * 300
+    assert len(emoji_answer) == 300
+
+    app.invoke(Command(resume=emoji_answer), config)
+
+    assert llm.schema_calls.count("AnswerValue") == 1

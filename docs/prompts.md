@@ -1042,3 +1042,152 @@ Nenhuma das seis tentativas adversariais (instrução embutida, ordem direta de 
 1. Registro desta entrada em pull request separado (`docs/owasp-hardening-log`), e não no mesmo PR do código: O-06 e O-07 só puderam rodar depois do merge do PR de código (dependem da main atualizada e, no caso do O-06, de uma etapa manual do usuário), então o resultado completo desta entrada só existiu depois do merge. Mesmo precedente da sessão I-005.
 2. Item 5 do prompt (reavaliação de A-06/A-08) gerou uma pergunta adicional não prevista no prompt original: aprovação explícita para o O-06 chamar o endpoint real, feita via AskUserQuestion no momento de executar aquele item, conforme a própria tarefa já exigia ("pedindo aprovação explícita antes de qualquer chamada ao endpoint").
 3. O security review encontrou e corrigiu uma vulnerabilidade não prevista no prompt original (bypass de `LANGSMITH_TRACING_V2` na mitigação do O-01): tratada como parte do próprio item O-01, absorvida no commit original via fixup, sem gerar item novo de backlog nem exigir nova aprovação do usuário, seguindo o gate padrão do projeto (Critical/Important corrige antes do PR).
+
+### I-007: Implementação do backlog de testes B-01 a B-08 (Claude Code, 2026-07-14)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário PGSI,
+construído com LangGraph. Backlog funcional T-01 a T-18, CI, auditoria de segurança OWASP Top
+10 for LLM Applications 2025 (O-01 a O-08) e a implementação I-006 estão mergeados na main.
+212 testes verdes offline (TRIAGE_FAKE_LLM=1 forçado por fixture autouse em tests/conftest.py),
+sem rede nem chave de API.
+
+Uma sessão de planejamento (P-006) auditou a suíte de testes por inteiro e produziu
+docs/TEST_AUDIT_PLAN.md, com: matriz de rastreabilidade (RF/RNF/aceites/decisões D/riscos R
+vs. teste que prova cada um), 19 achados (F-01 a F-19, nenhum Crítico), backlog de
+implementação (B-01 a B-15) e a seção 5 já com as 7 perguntas abertas decididas pelo usuário
+via AskUserQuestion (registradas com "Decisão do usuário" em cada uma).
+
+Decisão de escopo já tomada (pergunta 2 da seção 5): o corte antes do freeze de v0.1
+(19/07/2026) é o backlog COMPLETO de B-01 a B-08. B-09 a B-15 ficam de fora, são backlog
+pós-v0.1 e não devem ser tocados nesta sessão.
+
+Decisão de escopo relevante para B-07/B-08 (pergunta 6 da seção 5, a única que foi CONTRA a
+recomendação do documento): o tier de testes com o LLM real local carrega as variáveis do
+`.env` (TRIAGE_LLM_BASE_URL, TRIAGE_LLM_MODEL, OPENAI_API_KEY) por um parser mínimo
+implementado no conftest do tier, e NÃO deve adicionar python-dotenv como dependência nova.
+
+Decisão de escopo relevante para B-08 (pergunta 7): os testes do tier `real_llm` NÃO entram
+no CI (o runner do GitHub não alcança localhost:8000); ficam opt-in, rodados localmente por
+comando explícito (`uv run pytest -m real_llm`), com skip automático quando o endpoint não
+está configurado ou não responde.
+
+Requisitos inegociáveis: `uv run pytest` (sem marcador) e o CI continuam 100% executáveis
+offline e sem chave de API, exatamente como hoje; nenhum segredo versionado; documentação em
+PT-BR, código e identificadores em inglês; não usar travessão longo em nenhum texto gerado;
+Conventional Commits 1.0.0 em inglês, um commit por item do backlog (B-01 a B-08); esta
+sessão é sobre TESTES, não sobre código de produção: nenhuma mudança em src/triagem/ é
+esperada para B-01 a B-06 (eles travam comportamento já existente). Se algum teste novo
+revelar um bug real de produção (comportamento diferente do documentado/esperado), PARE e
+pergunte ao usuário antes de corrigir `src/triagem/`, em vez de expandir o escopo desta
+sessão silenciosamente.
+
+# Papel
+Atue como engenheiro(a) de testes sênior em Python, especialista em pytest, LangGraph e
+engenharia de robustez para agentes conversacionais baseados em LLM. Use TDD e o mesmo padrão
+subagent-driven-development já usado nas sessões I-004 e I-006 deste projeto: um subagente
+implementador por item do backlog, seguido de revisão de conformidade com o achado/teste
+proposto e revisão de qualidade de código, com laço de correção quando a revisão encontrar
+achado Important, tudo em um único worktree isolado para esta sessão (não um worktree por
+subagente); revisão holística do PR inteiro + security review antes de abrir o PR.
+
+# Tarefa
+1. Leia docs/TEST_AUDIT_PLAN.md por inteiro, com atenção às seções 3 (achados F-01 a F-19),
+   4 (backlog B-01 a B-15) e 5 (decisões já tomadas). Leia também os arquivos de teste e de
+   produção citados em cada item antes de escrever qualquer teste novo.
+2. Implemente, em ordem, os itens B-01 a B-08 do backlog, cada um como um commit
+   Conventional Commits próprio (prefixo `test:`), seguindo exatamente o "Teste proposto" de
+   cada achado correspondente (F-01 a F-06, F-11, F-12, F-13, F-14, F-18) como especificação:
+   - B-01: tests/test_copy.py (novo) + tests/test_graph_e2e.py - trava todas as mensagens
+     fixas voltadas ao usuário (WELCOME, GOODBYE, INFO_MESSAGE, FALLBACK_MESSAGE,
+     ABORT_MESSAGE, RETRY_HINT, OFFER_MESSAGE, BAND_LABELS, BAND_EXPLANATIONS, DISCLAIMER,
+     REFERRALS, CRISIS_MESSAGE) por snapshot literal, mais invariantes de conteúdo (D-08: sem
+     claim clínico) e o final_answer/label/explicação corretos para cada uma das quatro
+     faixas (sem_risco, baixo, moderado, alto), não só "alto".
+   - B-02: tests/test_tools.py - trava os 9 textos das perguntas do PGSI e a escala
+     verbatim contra o Anexo A de docs/PLAN.md (D-07, sem paráfrase).
+   - B-03: tests/test_adversarial.py (novo) - corpus adversarial determinístico
+     (~20-30 casos parametrizados) contra fake/spy, cobrindo os 6 casos do checklist manual
+     O-06 (instrução embutida, ordem direta de valor, leak de system prompt, valores fora da
+     escala, spoofing do delimitador `<answer>`, caso de controle legítimo) tanto para o
+     parser de resposta quanto para o classificador de intenção.
+   - B-04: tests/test_safety.py - amplia o corpus de test_check_crisis_positives para cobrir
+     todos os termos de CRISIS_TERMS (safety.py), cada um dentro de uma frase natural, mais
+     variações coloquiais de PT-BR que o heurístico atual já captura (não amplie o próprio
+     heurístico; se uma frase coloquial plausível NÃO for capturada, documente como limitação
+     conhecida em vez de alterar safety.py).
+   - B-05: tests/test_report.py - cobre o rollback do .md órfão quando a escrita do .json
+     colide (tools.py), PermissionError/OSError propagando direto de write_triage_report
+     (não só simulado no boundary do CLI), e um corpus adversarial mais amplo para
+     _sanitize_thread_id (null byte, "--" inicial, unicode, nomes reservados do Windows).
+   - B-06: tests/test_graph_e2e.py - cobre Command(resume=...) com payload não-string
+     (None, int, dict, list) documentando a coerção str() existente em nodes.py, e as bordas
+     de MAX_ANSWER_LENGTH com Unicode (caractere combinante vs. code point único) em vez de
+     só ASCII.
+   - B-07: tests/conftest.py, pyproject.toml - infraestrutura do tier real: registre o
+     marker `real_llm` no pyproject; ajuste a fixture offline_env para não forçar
+     TRIAGE_FAKE_LLM=1 em testes marcados com `real_llm`; crie uma fixture de gate que faz
+     skip automático quando TRIAGE_LLM_BASE_URL/TRIAGE_LLM_MODEL não estiverem definidos ou o
+     endpoint não responder; carregue o `.env` por um parser mínimo local no conftest do tier
+     (sem adicionar python-dotenv, conforme decisão registrada). Verifique explicitamente que
+     `uv run pytest` (sem `-m`) continua verde e 100% offline, e que
+     `uv run pytest -m real_llm` sem endpoint configurado produz só skips, nunca falhas.
+   - B-08: tests/test_real_llm.py (novo, marcado `real_llm`) - smoke e2e completo com
+     respostas mistas (dígito e texto) contra o modelo real, automação dos mesmos 6 casos
+     adversariais do B-03 contra o modelo real (não fake/spy) para o parser e o classificador,
+     e o caso de controle legítimo. Antes de efetivamente RODAR esses testes contra o
+     endpoint real (localhost:8000, oMLX + Qwen3.6-35B-A3B-4bit), peça aprovação explícita do
+     usuário via AskUserQuestion, na mesma prática já usada no O-06. Se o endpoint não
+     estiver disponível nesta sessão, ainda assim escreva e comite os testes (o gate do B-07
+     garante skip seguro); registre no Resultado se eles chegaram a rodar de fato e o que
+     encontraram.
+3. Depois de B-01 a B-08 implementados, atualize a tabela da seção 4 de
+   docs/TEST_AUDIT_PLAN.md marcando B-01 a B-08 como implementados (mesmo padrão usado em
+   docs/OWASP_LLM_AUDIT_PLAN.md após a sessão I-006).
+4. Rode a suíte completa (`uv run pytest`) e confirme que continua verde e offline; rode
+   também `uv run pytest -m real_llm` (com e sem endpoint configurado, conforme
+   disponibilidade) para confirmar o comportamento de skip.
+5. Revisão holística do PR inteiro + security review antes de abrir o PR, seguindo o mesmo
+   padrão das sessões anteriores deste projeto.
+6. Registre esta sessão em docs/prompts.md como I-007 (prompt e resultado), na seção
+   "2. Implementação", no padrão do arquivo (bloco de prompt, decisões tomadas via
+   AskUserQuestion, número do PR, testes antes/depois).
+
+# Formato
+Ao final, imprima no chat um resumo curto: quantos testes existiam antes e depois, quais
+dos B-01 a B-08 foram implementados (todos devem ser, salvo bloqueio explícito reportado),
+se B-08 chegou a rodar contra o modelo real ou só foi escrito com skip pendente, qualquer bug
+de produção encontrado e explicitamente NÃO corrigido (aguardando decisão), e o link do pull
+request.
+```
+
+Decisões tomadas via AskUserQuestion durante a execução:
+
+1. **B-08, aprovação para chamar o endpoint real** (decidida durante o planejamento desta sessão, antes da Tarefa 1): aprovado rodar `uv run pytest -m real_llm` contra o endpoint real em B-08 se ele estivesse respondendo no momento da execução, sem precisar perguntar de novo (opção "Sim, rodar se disponível", recomendação aceita).
+2. **B-08, bypass adversarial confirmado contra o modelo real**: rodando o corpus adversarial do B-08 seis vezes seguidas contra o modelo real, três das seis rodadas tiveram ao menos um caso de bypass (o modelo aceitou o valor injetado em vez de devolver null). Opção escolhida: "Documentar e manter escopo de testes" (recomendação aceita). A asserção do teste real_llm continua estrita (pode ficar vermelho em reruns futuros, o que é informativo, não um teste quebrado), o achado foi documentado com dados concretos em F-18 (docs/TEST_AUDIT_PLAN.md), e um item novo de backlog (B-16, pós-v0.1) foi registrado para o hardening de produção. Nenhuma mudança em `src/triagem/` nesta sessão.
+3. **Consolidação de commits da Tarefa 9**: o classificador de permissão do auto mode bloqueou duas tentativas de consolidar os commits do B-08 em um só (`git commit --amend` e depois `git reset --soft` + commit), por entender que uma decisão relatada de uma pergunta anterior não constitui consentimento direto para uma operação destrutiva de git. Opção escolhida: "Commitar como um só" (recomendação aceita), com autorização explícita do usuário para essa ação específica.
+
+**Resultado**: os oito itens de teste (B-01 a B-08) implementados, mais dois commits de documentação (marcação de status na seção 4 e correção do achado F-04 encontrada na revisão holística), na branch `test/audit-b01-b08` (worktree `.worktrees/test-audit-b01-b08`):
+
+- `test: lock user-facing copy and band messages` (B-01/F-01/F-03)
+- `test: pin PGSI items to validated wording` (B-02/F-02)
+- `test: add deterministic adversarial corpus for parser and classifier` (B-03/F-11)
+- `test: broaden crisis heuristic corpus` (B-04/F-12)
+- `test: cover report failure paths and filename sanitization` (B-05/F-06/F-14)
+- `test: cover resume coercion and unicode length edges` (B-06/F-04/F-13)
+- `test: add opt-in real llm test tier` (B-07/F-18)
+- `test: automate adversarial checklist against local llm` (B-08/F-18, inclui a documentação do bypass confirmado)
+- `docs(audit): mark b-01 to b-08 implemented in test audit plan`
+- `docs(audit): correct F-04 finding with confirmed langgraph None-resume crash`
+
+Cada item passou por revisão de conformidade com o achado/teste proposto e revisão de qualidade de código (agente `superpowers:code-reviewer`), com laço de correção nos itens que encontraram achado Important: B-01 (teste monolítico de snapshot dividido em 12 funções independentes, mais reuso de `triagem.parsing.normalize` e correção de um caso de banda duplicado), B-02 (chamada corrigida para usar `DATA_PATH` absoluto em vez do default dependente de cwd), B-03 (o teste do classificador adversarial não exercitava de fato o texto, corrigido para rodar `classify_intent_node` de verdade com um spy roteirizado), B-07 (o parser de `.env` rodava incondicionalmente no import do conftest, arriscando derrubar a suíte inteira com um `.env` malformado; movido para dentro da fixture de gate, só executando quando um teste `real_llm` é de fato selecionado) e B-08 (a segunda mitigação sugerida no item B-16 não endereçava o mecanismo real do bypass, corrigida para apontar para defesas semânticas). Revisão holística do PR inteiro encontrou e corrigiu mais dois itens: o achado F-04 em docs/TEST_AUDIT_PLAN.md estava desatualizado (não refletia a descoberta do B-06 de que `Command(resume=None)` na verdade levanta `UnboundLocalError` dentro do próprio LangGraph, não chega à coerção `str()` descrita), e um arquivo não tinha passado por `ruff format`. Security review (metodologia de 3 fases com verificação adversarial paralela) não encontrou nenhum achado de Alta ou Média confiança: todas as mudanças são test-only, sem caminho de entrada controlado por atacante.
+
+**PR #20** "test: implement b-01 to b-08 from test audit plan" aberto (ainda não mergeado). `uv run pytest` verde offline: 284 testes (de 212 antes da sessão), mais 10 testes do tier `real_llm` (294 no total coletado). `uv run pytest -m real_llm -v`: o endpoint local (oMLX + Qwen3.6-35B-A3B-4bit, `localhost:8000`) esteve disponível durante toda a sessão; os 10 testes rodaram de fato contra o modelo real (não só skip), com o achado de bypass intermitente descrito acima.
+
+**Desvios do planejado, com justificativa**:
+1. B-06 (Tarefa 7) revelou que `Command(resume=None)` não é gracefully coagido por `nodes.py` como a spec original do achado F-04 previa: o payload `None` nunca chega ao código do `triagem`, pois o próprio LangGraph (`SyncPregelLoop._first`, `pregel/_loop.py`, versão pinada 1.2.9) levanta `UnboundLocalError` antes disso. Confirmado como um bug real e reproduzível da biblioteca, não do projeto, sem risco de produção (o CLI só passa `str(input())`, nunca `None`). O teste planejado para o caso `None` foi substituído por um teste dedicado documentando o crash, e o achado F-04 foi corrigido no plano de auditoria (ver revisão holística).
+2. B-08 encontrou um bug de segurança real (não de teste): o parser de resposta contra o modelo real cede a injeção de prompt de forma intermitente (~metade das execuções repetidas). Isso não estava previsto no prompt original além da instrução genérica de "pare e pergunte". Escalado ao usuário via AskUserQuestion (ver Decisões acima); resolvido mantendo o escopo desta sessão em testes apenas, com o achado documentado e um item de backlog novo (B-16) criado para uma sessão futura de hardening de produção.
+3. A consolidação dos commits do B-08 em um único commit precisou de duas rodadas de autorização explícita do usuário via AskUserQuestion, depois que o classificador de permissão do auto mode bloqueou duas tentativas de fazê-lo por outros mecanismos (amend relatado por um subagente; reset+commit pelo próprio orquestrador). Nenhum dado foi perdido em nenhum momento; a branch nunca havia sido enviada ao remoto até esse ponto.
+4. A revisão holística do PR inteiro (item 5 do prompt) encontrou dois itens não previstos originalmente: o achado F-04 desatualizado e um arquivo sem `ruff format`. Ambos corrigidos num commit de documentação adicional, seguindo o gate padrão do projeto (Critical/Important corrige antes do PR).
