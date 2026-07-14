@@ -228,6 +228,19 @@ def test_self_consistency_failed_sample_can_prevent_a_majority():
     assert result.value is None
 
 
+def test_self_consistency_reraises_when_all_samples_fail():
+    # Total failure (e.g. the endpoint is down) must surface as an error,
+    # not silently degrade to "the user gave an invalid answer" and burn
+    # one of their limited attempts (B-16 review finding).
+    spy = ScriptedSequenceAnswerLLM(
+        [RuntimeError("boom1"), RuntimeError("boom2"), RuntimeError("boom3")]
+    )
+    wrapped = SelfConsistencyLLM(spy, samples=3)
+
+    with pytest.raises(RuntimeError, match="boom1"):
+        wrapped.with_structured_output(AnswerProbe).invoke("qualquer resposta")
+
+
 def test_self_consistency_passes_through_schemas_without_a_value_field():
     # Documents the B-17 scope decision (docs/PARSER_HARDENING_PLAN.md):
     # the classifier is unaffected, a single call, no voting.
