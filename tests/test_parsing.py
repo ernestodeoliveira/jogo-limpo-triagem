@@ -25,6 +25,9 @@ from triagem.parsing import (
         ("toda vez, sim!", "toda vez sim"),
         ("0", "0"),
         ("", ""),
+        ("-1", "-1"),
+        ("-2", "-2"),
+        ("-3", "-3"),
     ],
 )
 def test_normalize(text, expected):
@@ -70,6 +73,22 @@ def test_deterministic_table_complete(text, expected):
     ],
 )
 def test_ambiguous_or_off_table_is_none(text):
+    assert parse_answer_deterministic(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "-1",
+        "-2",
+        "-3",
+    ],
+)
+def test_out_of_scale_bare_number_is_none(text):
+    # normalize() must not strip the leading '-': stripping it collapsed
+    # "-1"/"-2"/"-3" onto the valid table keys "1"/"2"/"3", accepting an
+    # out-of-scale answer as valid before it ever reached the LLM fallback
+    # or the self-consistency defense (B-16 review finding).
     assert parse_answer_deterministic(text) is None
 
 
