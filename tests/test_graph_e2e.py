@@ -237,6 +237,11 @@ def test_offer_unrecognized_reply_aborts(app, config):
         "TENTAR DE NOVO",
         "  tentar de novo  ",
         "Tentar De Novo",
+        # Hyphenated phrasing must still match: normalize() folds '-' to a
+        # space here too (B-16 review finding: a fix scoped to parsing.py's
+        # answer table must not regress this exact-match lookup).
+        "tentar-novamente",
+        "tentar-de-novo",
     ],
 )
 def test_interpret_offer_reply_recognizes_retry_choices(text):

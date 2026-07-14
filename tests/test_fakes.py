@@ -42,6 +42,11 @@ class AnswerProbe(BaseModel):
         ("me indica uma receita de bolo", "fora_dominio"),
         ("2", "responder"),
         ("acho que foi assim mesmo", "responder"),
+        # Hyphenated phrasing must still match: normalize() folds '-' to a
+        # space for this word-splitting marker check too (B-16 review
+        # finding: a fix scoped to parsing.py's answer table must not
+        # regress the offline classifier's keyword matching).
+        ("quero-saber-do-futebol", "fora_dominio"),
     ],
 )
 def test_fake_classifier_keyword_table(text, intent):

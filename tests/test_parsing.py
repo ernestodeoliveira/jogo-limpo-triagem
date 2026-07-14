@@ -25,9 +25,11 @@ from triagem.parsing import (
         ("toda vez, sim!", "toda vez sim"),
         ("0", "0"),
         ("", ""),
-        ("-1", "-1"),
-        ("-2", "-2"),
-        ("-3", "-3"),
+        # '-' folds to a space like any other punctuation: safety.py's
+        # crisis gate and nodes.py's retry-choice lookup both depend on
+        # this to find whole words in hyphenated input.
+        ("-1", "1"),
+        ("quero-morrer", "quero morrer"),
     ],
 )
 def test_normalize(text, expected):
