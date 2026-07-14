@@ -183,11 +183,11 @@ class SelfConsistencyLLM:
     """
 
     def __init__(self, llm, samples: int = SELF_CONSISTENCY_SAMPLES):
-        self._llm = llm
+        self.llm = llm
         self._samples = samples
 
     def with_structured_output(self, schema, **kwargs):
-        structured = self._llm.with_structured_output(schema, **kwargs)
+        structured = self.llm.with_structured_output(schema, **kwargs)
         if "value" not in getattr(schema, "model_fields", {}):
             return structured
         return _MajorityVoteRunnable(schema, structured, self._samples)
@@ -208,7 +208,9 @@ def get_llm():
     """Factory honoring TRIAGE_FAKE_LLM (RNF-02).
 
     TRIAGE_FAKE_LLM=1 returns the deterministic FakeLLM; otherwise builds a
-    ChatOpenAI client for the local OpenAI-compatible endpoint (decision Q6).
+    ChatOpenAI client for the local OpenAI-compatible endpoint (decision Q6),
+    wrapped in the self-consistency defense against the intermittent bypass
+    confirmed in F-18 (B-16, docs/PARSER_HARDENING_PLAN.md).
     """
     if os.environ.get("TRIAGE_FAKE_LLM") == "1":
         return FakeLLM()
@@ -223,7 +225,7 @@ def get_llm():
 
     from langchain_openai import ChatOpenAI  # lazy import keeps offline path light
 
-    return ChatOpenAI(
+    real_llm = ChatOpenAI(
         base_url=base_url,
         model=model,
         # Local MLX/LM Studio endpoints ignore the key, but the client requires one.
@@ -231,3 +233,4 @@ def get_llm():
         timeout=LLM_TIMEOUT_SECONDS,
         max_retries=LLM_MAX_RETRIES,
     )
+    return SelfConsistencyLLM(real_llm)
