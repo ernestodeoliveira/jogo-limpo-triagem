@@ -6,16 +6,20 @@ yields a schema instance. FakeLLM composes both behind a single object,
 dispatching by the schema's field names, so build_agent(llm) holds exactly
 one llm in both modes. get_llm() is the factory honoring TRIAGE_FAKE_LLM;
 the real client targets a local OpenAI-compatible endpoint (decision Q6).
+SelfConsistencyLLM wraps that real client with the self-consistency
+defense against the intermittent bypass confirmed in F-18
+(docs/PARSER_HARDENING_PLAN.md, B-16).
 """
 
 import os
 import sys
 from urllib.parse import urlparse
 
-from triagem.parsing import normalize, parse_answer_deterministic
+from triagem.parsing import majority_vote, normalize, parse_answer_deterministic
 
 LLM_TIMEOUT_SECONDS = 30
 LLM_MAX_RETRIES = 2
+SELF_CONSISTENCY_SAMPLES = 3
 
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
@@ -154,6 +158,56 @@ class FakeLLM:
         raise ValueError(f"no fake behavior registered for schema {name}")
 
 
+class _MajorityVoteRunnable:
+    """Calls the wrapped runnable `samples` times concurrently and votes on
+    the results. Uses batch(return_exceptions=True) so the samples run in
+    parallel (LangChain's default Runnable.batch uses a thread pool) instead
+    of adding samples-1 sequential round trips of latency, and so a failed
+    sample degrades to a None vote instead of aborting the whole parse.
+    """
+
+    def __init__(self, schema, structured, samples):
+        self._schema = schema
+        self._structured = structured
+        self._samples = samples
+
+    def invoke(self, input, config=None):
+        results = self._structured.batch(
+            [input] * self._samples, config=config, return_exceptions=True
+        )
+        if all(isinstance(result, Exception) for result in results):
+            # Every sample failed: almost certainly an infrastructure issue
+            # (e.g. the endpoint is down), not an ambiguous answer. Surface
+            # it instead of silently voting None and burning one of the
+            # user's limited attempts (B-16 review finding).
+            raise results[0]
+        values = [
+            None if isinstance(result, Exception) else result.value
+            for result in results
+        ]
+        return self._schema(value=majority_vote(values))
+
+
+class SelfConsistencyLLM:
+    """Wraps a chat model with the self-consistency defense (B-16).
+
+    with_structured_output votes across `samples` independent calls for any
+    schema with a "value" field (the answer parser); every other schema
+    (the intent classifier) passes through with a single call, unaffected
+    (scope decision B-17, docs/PARSER_HARDENING_PLAN.md).
+    """
+
+    def __init__(self, llm, samples: int = SELF_CONSISTENCY_SAMPLES):
+        self.llm = llm
+        self.samples = samples
+
+    def with_structured_output(self, schema, **kwargs):
+        structured = self.llm.with_structured_output(schema, **kwargs)
+        if "value" not in getattr(schema, "model_fields", {}):
+            return structured
+        return _MajorityVoteRunnable(schema, structured, self.samples)
+
+
 def _warn_if_non_local_endpoint(base_url: str) -> None:
     """Warn, but do not block, when TRIAGE_LLM_BASE_URL is not a local host (A-02)."""
     host = urlparse(base_url).hostname or ""
@@ -169,7 +223,9 @@ def get_llm():
     """Factory honoring TRIAGE_FAKE_LLM (RNF-02).
 
     TRIAGE_FAKE_LLM=1 returns the deterministic FakeLLM; otherwise builds a
-    ChatOpenAI client for the local OpenAI-compatible endpoint (decision Q6).
+    ChatOpenAI client for the local OpenAI-compatible endpoint (decision Q6),
+    wrapped in the self-consistency defense against the intermittent bypass
+    confirmed in F-18 (B-16, docs/PARSER_HARDENING_PLAN.md).
     """
     if os.environ.get("TRIAGE_FAKE_LLM") == "1":
         return FakeLLM()
@@ -184,7 +240,7 @@ def get_llm():
 
     from langchain_openai import ChatOpenAI  # lazy import keeps offline path light
 
-    return ChatOpenAI(
+    real_llm = ChatOpenAI(
         base_url=base_url,
         model=model,
         # Local MLX/LM Studio endpoints ignore the key, but the client requires one.
@@ -192,3 +248,4 @@ def get_llm():
         timeout=LLM_TIMEOUT_SECONDS,
         max_retries=LLM_MAX_RETRIES,
     )
+    return SelfConsistencyLLM(real_llm, samples=SELF_CONSISTENCY_SAMPLES)

@@ -31,6 +31,13 @@ from triagem.state import initial_state
         "sem saída",
         "Sem saída...",
         "SEM SAÍDA",
+        # Hyphenated phrasing must still match: normalize() folds '-' to a
+        # space for word-splitting consumers like this one (B-16 review
+        # finding: a fix scoped to parsing.py's answer table must not
+        # regress the crisis gate, which shares normalize()).
+        "quero-morrer",
+        "socorro-urgente",
+        "me-matar, por favor",
     ],
 )
 def test_check_crisis_positives(text):

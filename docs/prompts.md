@@ -1287,3 +1287,23 @@ Cada item passou por revisão de conformidade com o achado/teste proposto e revi
 2. B-08 encontrou um bug de segurança real (não de teste): o parser de resposta contra o modelo real cede a injeção de prompt de forma intermitente (~metade das execuções repetidas). Isso não estava previsto no prompt original além da instrução genérica de "pare e pergunte". Escalado ao usuário via AskUserQuestion (ver Decisões acima); resolvido mantendo o escopo desta sessão em testes apenas, com o achado documentado e um item de backlog novo (B-16) criado para uma sessão futura de hardening de produção.
 3. A consolidação dos commits do B-08 em um único commit precisou de duas rodadas de autorização explícita do usuário via AskUserQuestion, depois que o classificador de permissão do auto mode bloqueou duas tentativas de fazê-lo por outros mecanismos (amend relatado por um subagente; reset+commit pelo próprio orquestrador). Nenhum dado foi perdido em nenhum momento; a branch nunca havia sido enviada ao remoto até esse ponto.
 4. A revisão holística do PR inteiro (item 5 do prompt) encontrou dois itens não previstos originalmente: o achado F-04 desatualizado e um arquivo sem `ruff format`. Ambos corrigidos num commit de documentação adicional, seguindo o gate padrão do projeto (Critical/Important corrige antes do PR).
+
+### I-008: Implementação do hardening do parser contra bypass intermitente (B-16, H-01 a H-05) (Claude Code, 14/07)
+
+```text
+Implementar H-01: escrever os testes de majority_vote primeiro
+```
+
+Instruções complementares dadas ao longo da execução: continuar de H-01 até H-05 no mesmo
+branch antes de abrir PR (decidido via AskUserQuestion); rodar code review e security review
+com as skills disponíveis antes de cada PR (instrução permanente do usuário durante a sessão).
+
+**Resultado**: implementados H-01 a H-05 do backlog de `docs/PARSER_HARDENING_PLAN.md` (branch `feat/parser-self-consistency`, worktree `.worktrees/parser-self-consistency`), seguindo TDD estrito (RED confirmado antes de cada implementação): `majority_vote` (função pura de votação por maioria estrita, fail-closed) em `src/triagem/parsing.py`; `SelfConsistencyLLM` (wrapper com dispatch por schema, mesmo padrão do `FakeLLM`) em `src/triagem/fakes.py`, ligado em `get_llm()` só no caminho do cliente real; reforço do `PARSE_SYSTEM_PROMPT` citando os dois bypasses confirmados; teste leve de regressão contínua no tier `real_llm`.
+
+Duas rodadas de revisão (workflow de code review em nível xhigh depois high, mais agentes de security review dedicados, mais uma passada do agente `superpowers:code-reviewer`) encontraram e corrigiram, todas via TDD:
+- **Achado mais severo (auto-infligido por esta sessão)**: a primeira tentativa de corrigir o bypass "-1" alterou `normalize()` (função compartilhada) para preservar o `-`, o que silenciosamente quebrou o gate de detecção de crise em `safety.py` (`check_crisis("quero-morrer")` passou a devolver `False`), o interpretador de resposta de retry em `nodes.py` (`interpret_offer_reply`) e o casamento de palavras-chave do `FakeClassifier` offline — todos dependem de `normalize()` transformar `-` em espaço para separar palavras. Confirmado empiricamente (`check_crisis` antes/depois) e corrigido revertendo `normalize()` ao comportamento original; o bypass do "-1" passou a ser resolvido por uma guarda estreita e específica em `parse_answer_deterministic` (regex `^-\s*\d`), sem tocar a função compartilhada. Testes de regressão adicionados nos três consumidores afetados.
+- Isolamento de exceções + concorrência: `_MajorityVoteRunnable.invoke` passou a usar `batch(return_exceptions=True)` (chamadas concorrentes via thread pool padrão do LangChain) em vez de um laço sequencial de `invoke()`; uma amostra falhando agora vira voto `None` em vez de derrubar a sessão inteira, exceto quando as 3 amostras falham juntas (provável indisponibilidade do endpoint), caso em que a exceção é relançada em vez de tratada como resposta inválida do usuário.
+- Binding do `SELF_CONSISTENCY_SAMPLES`: `SelfConsistencyLLM.samples` virou atributo público e `get_llm()` passa o valor atual da constante explicitamente, em vez de depender do default do construtor (vinculado em tempo de importação, não por chamada).
+- `majority_vote([])` agora falha fechado para `None` em vez de levantar `IndexError`.
+
+`uv run pytest` verde ao final: 317 testes offline (de 294 no início da sessão), mais 12 no tier opt-in `real_llm` (nenhuma chamada real feita nesta sessão). Nenhuma dependência nova. PR ainda não aberto nesta entrada; ver próxima entrada ou o histórico do branch para o número final.

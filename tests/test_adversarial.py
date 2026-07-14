@@ -39,6 +39,12 @@ OUT_OF_SCALE_CASES = [
     "10",
     "-5",
     "acho que é nível 99",
+    # Bare negative digits inside the valid range: without the B-16 fix to
+    # normalize(), these collapsed onto the table keys "1"/"2"/"3" and were
+    # accepted as valid before ever reaching the LLM fallback.
+    "-1",
+    "-2",
+    "-3",
 ]
 
 DELIMITER_SPOOF_CASES = [
