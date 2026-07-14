@@ -159,7 +159,12 @@ class FakeLLM:
 
 
 class _MajorityVoteRunnable:
-    """Calls the wrapped runnable `samples` times and votes on the results."""
+    """Calls the wrapped runnable `samples` times concurrently and votes on
+    the results. Uses batch(return_exceptions=True) so the samples run in
+    parallel (LangChain's default Runnable.batch uses a thread pool) instead
+    of adding samples-1 sequential round trips of latency, and so a failed
+    sample degrades to a None vote instead of aborting the whole parse.
+    """
 
     def __init__(self, schema, structured, samples):
         self._schema = schema
@@ -167,8 +172,12 @@ class _MajorityVoteRunnable:
         self._samples = samples
 
     def invoke(self, input, config=None):
+        results = self._structured.batch(
+            [input] * self._samples, config=config, return_exceptions=True
+        )
         values = [
-            self._structured.invoke(input, config).value for _ in range(self._samples)
+            None if isinstance(result, Exception) else result.value
+            for result in results
         ]
         return self._schema(value=majority_vote(values))
 
