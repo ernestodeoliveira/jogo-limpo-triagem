@@ -102,3 +102,53 @@ def test_load_scale_empty_label_raises(tmp_path):
 def test_load_scale_missing_file_raises(tmp_path):
     with pytest.raises(PGSIDataError, match="not found"):
         load_pgsi_scale(str(tmp_path / "absent.json"))
+
+
+def test_pgsi_items_match_validated_text_verbatim():
+    questions = load_pgsi_questions(str(DATA_PATH))
+    scale = load_pgsi_scale(str(DATA_PATH))
+
+    expected_texts = {
+        "q1": "Você apostou mais do que realmente poderia perder?",
+        "q2": (
+            "Ainda pensando nos últimos 12 meses, você precisou apostar "
+            "quantias cada vez maiores de dinheiro para ter a mesma sensação "
+            "de prazer?"
+        ),
+        "q3": (
+            "Depois de ter apostado, você retorna outro dia para tentar "
+            "recuperar o dinheiro perdido?"
+        ),
+        "q4": (
+            "Você pediu dinheiro emprestado ou vendeu alguma coisa para "
+            "conseguir dinheiro para apostar?"
+        ),
+        "q5": "Você achou que poderia ter algum problema com apostas?",
+        "q6": (
+            "Apostar já lhe causou algum problema de saúde, como estresse ou "
+            "ansiedade?"
+        ),
+        "q7": (
+            "As pessoas já lhe criticaram por apostar, ou disseram que você "
+            "tinha problemas com apostar, independentemente de você achar que "
+            "era verdade ou não?"
+        ),
+        "q8": (
+            "As suas apostas já causaram algum problema financeiro para você "
+            "ou sua família?"
+        ),
+        "q9": (
+            "Você já se sentiu culpado(a) pela maneira como você aposta ou "
+            "pelo que acontece quando você aposta?"
+        ),
+    }
+
+    actual_texts = {question.id: question.text for question in questions}
+    assert actual_texts == expected_texts
+
+    assert scale == {
+        "0": "Nunca",
+        "1": "Às vezes",
+        "2": "Na maioria das vezes",
+        "3": "Quase sempre",
+    }
