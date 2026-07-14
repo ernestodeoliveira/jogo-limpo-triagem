@@ -125,8 +125,7 @@ def test_pgsi_items_match_validated_text_verbatim():
         ),
         "q5": "Você achou que poderia ter algum problema com apostas?",
         "q6": (
-            "Apostar já lhe causou algum problema de saúde, como estresse ou "
-            "ansiedade?"
+            "Apostar já lhe causou algum problema de saúde, como estresse ou ansiedade?"
         ),
         "q7": (
             "As pessoas já lhe criticaram por apostar, ou disseram que você "
