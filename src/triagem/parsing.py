@@ -46,7 +46,12 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", stripped)).strip()
 
 
-_LEADING_NEGATIVE_NUMBER = re.compile(r"^-\s*\d")
+# Besides the ASCII '-', covers the Unicode dash block (hyphen U+2010
+# through horizontal bar U+2015), the minus sign U+2212 and its small and
+# fullwidth compatibility forms (U+FE63, U+FF0D): normalize() folds every
+# one of them to a space, so any of them before a digit would collapse
+# onto a valid table key exactly like the ASCII "-1" did (F-20).
+_LEADING_NEGATIVE_NUMBER = re.compile(r"^[-‐-―−﹣－]\s*\d")
 
 
 def parse_answer_deterministic(text: str) -> int | None:

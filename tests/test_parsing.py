@@ -84,13 +84,24 @@ def test_ambiguous_or_off_table_is_none(text):
         "-1",
         "-2",
         "-3",
+        "- 1",
+        "‐1",  # hyphen
+        "–1",  # en dash
+        "—2",  # em dash
+        "−2",  # minus sign
+        "– 2",  # en dash + space
+        "﹣3",  # small hyphen-minus
+        "－3",  # fullwidth hyphen-minus
     ],
 )
 def test_out_of_scale_bare_number_is_none(text):
     # normalize() must not strip the leading '-': stripping it collapsed
     # "-1"/"-2"/"-3" onto the valid table keys "1"/"2"/"3", accepting an
     # out-of-scale answer as valid before it ever reached the LLM fallback
-    # or the self-consistency defense (B-16 review finding).
+    # or the self-consistency defense (B-16 review finding). The Unicode
+    # dash/minus variants are the same class of bug (F-20): normalize()
+    # folds every one of them to a space, so each would collapse onto a
+    # valid table key just like the ASCII "-1" did.
     assert parse_answer_deterministic(text) is None
 
 
