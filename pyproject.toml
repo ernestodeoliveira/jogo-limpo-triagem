@@ -24,3 +24,7 @@ packages = ["src/triagem"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = '-m "not real_llm"'
+markers = [
+    "real_llm: opt-in tests against the local real LLM endpoint; run explicitly via `uv run pytest -m real_llm` (see tests/test_real_llm.py)",
+]
