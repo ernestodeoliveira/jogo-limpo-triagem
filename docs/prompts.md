@@ -253,6 +253,149 @@ correção.
 
 **Complemento (mesma sessão, após o merge do PR #13)**: as 4 perguntas abertas foram decididas via AskUserQuestion e registradas na seção 5 de `docs/OWASP_LLM_AUDIT_PLAN.md` em pull request próprio: (1) threat model também de produção/multiusuário (única decisão fora da recomendação; eleva A-06 a Importante, com a contagem revista para 2 Importantes e 6 Menores, e marca A-08 para reavaliação); (2) rigor pré-freeze: A-01 + O-02/O-03/O-04 em um único PR pequeno de código; (3) scan de dependências: `pip-audit` one-shot antes da tag v0.1 (O-07), sem job de CI; (4) teste adversarial no modo real: executar 1 vez antes do freeze, com transcrição registrada (O-06). O prompt da sessão de implementação das correções foi gerado no chat, a registrar como I-006 na própria sessão de implementação.
 
+### P-006: Auditoria da suíte de testes (Claude Code, 13/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário
+PGSI (9 itens), construído com LangGraph. Estado atual: backlog funcional T-01 a T-18
+implementado e mergeado (grafo com ciclo de perguntas via interrupt()/Command(resume=...) e
+checkpointer InMemorySaver, parser determinístico com fallback LLM restrito a
+Literal[0,1,2,3]|None, classificação de intenção via LLM com saída estruturada, gate de
+crise por heurística de termos com precedência absoluta em três pontos do fluxo, score e
+faixa vindos só de função controlada, relatório .md/.json com escrita atômica); CI em
+GitHub Actions com branch protection (check `tests` obrigatório na main); auditoria de
+segurança OWASP Top 10 for LLM Applications 2025 completa e fechada (docs/OWASP_LLM_AUDIT_PLAN.md,
+achados A-01 a A-08 todos resolvidos ou aceitos, backlog O-01 a O-08 implementado, incluindo
+cap de 300 caracteres na resposta antes do fallback, timeout/retries no ChatOpenAI real,
+aviso de endpoint não local, tracing desabilitado por padrão, prompt do fallback endurecido
+contra instrução embutida, limite de 5 ciclos de retry por sessão, pip-audit limpo e
+checklist adversarial manual executado contra o modelo real com sucesso); código 100%
+`ruff format`-limpo (rodado ad hoc via uvx, ruff não é dependência do projeto). 212 testes
+verdes offline (TRIAGE_FAKE_LLM=1 forçado por fixture autouse em tests/conftest.py), sem
+rede nem chave de API. Documentos de referência com a especificação original do produto:
+docs/PRD.md (requisitos funcionais RF-01 a RF-10, não funcionais RNF-01 a RNF-06, critérios
+de aceite 1-6), docs/ARCHITECTURE.md (grafo, contratos de ferramentas, riscos R-01 a R-07),
+docs/DECISIONS.md (decisões D-01 a D-09 com racional e trade-off aceito), docs/PLAN.md
+(backlog original T-01 a T-24, com T-19 a T-24 ainda não executados: documentação final,
+exemplos, README, slides, tag v0.1). O que NUNCA foi feito é uma auditoria sistemática e
+completa da SUÍTE DE TESTES em si: até hoje cada tarefa gerou seus próprios testes de forma
+incremental, sem uma varredura final perguntando se a suíte, como um todo, prova
+conformidade com tudo que foi planejado, se as respostas do agente têm a qualidade esperada,
+se o sistema se comporta bem sob falhas e condições adversas fora do caminho feliz, e se a
+segurança já auditada continua coberta por teste automatizado (não só pela verificação
+manual pontual do O-06).
+Requisitos inegociáveis que esta auditoria deve respeitar: testes sempre executáveis offline
+e sem chave de API; nenhum segredo versionado; documentação em PT-BR; código e
+identificadores em inglês; não usar travessão longo em nenhum texto gerado; Conventional
+Commits 1.0.0 em inglês, inclusive em qualquer commit sugerido neste plano.
+Marco v0.1 (tag e congelamento): 19/07/2026, muito próximo da data desta sessão. Uma bateria
+"completa" cobrindo todas as áreas pedidas provavelmente não cabe inteira antes do freeze:
+o plano precisa ser honesto sobre isso e priorizar, não só listar tudo sem corte.
+
+# Papel
+Atue como QA lead / arquiteto(a) de testes sênior, com experiência em agentes conversacionais
+baseados em LLM, engenharia de robustez (chaos engineering) e metodologia de testes de
+segurança, no papel de planejador técnico de uma auditoria completa da suíte de testes deste
+repositório. Nesta sessão você NÃO escreve nenhum teste novo, NÃO corrige nenhum gap
+encontrado e NÃO altera código de produção nem arquivos de teste existentes — apenas mapeia,
+avalia e planeja, produzindo um documento pronto para uma sessão futura de implementação
+executar.
+
+# Tarefa
+1. Leia os arquivos relevantes: todo o src/triagem/ (state.py, classify.py, safety.py,
+   parsing.py, tools.py, nodes.py, graph.py, fakes.py, cli.py), toda a suíte em tests/
+   (conftest.py e os 12 arquivos de teste), docs/PRD.md, docs/ARCHITECTURE.md,
+   docs/DECISIONS.md, docs/PLAN.md, docs/OWASP_LLM_AUDIT_PLAN.md, docs/CI_PLAN.md,
+   README.md e docs/prompts.md (para não duplicar trabalho já registrado).
+2. **Conformidade com o planejado**: monte uma matriz de rastreabilidade cobrindo TODOS os
+   requisitos funcionais RF-01 a RF-10 e não funcionais RNF-01 a RNF-06 do PRD, os 6
+   critérios de aceite do PRD §6, as decisões D-01 a D-09 do DECISIONS.md (verificando se o
+   trade-off aceito de cada uma ainda é o comportamento real do código) e os riscos R-01 a
+   R-07 do ARCHITECTURE/PLAN (verificando se a mitigação descrita está realmente coberta por
+   teste, não só implementada). Para cada item, aponte o(s) teste(s) exato(s) que o provam
+   (arquivo::nome_do_teste) ou marque como lacuna se nenhum teste cobre isso diretamente
+   (implementado mas não testado explicitamente conta como lacuna).
+3. **Qualidade das respostas**: revise o conteúdo de todo texto fixo voltado ao usuário
+   (WELCOME, GOODBYE, INFO_MESSAGE, FALLBACK_MESSAGE, ABORT_MESSAGE, RETRY_HINT,
+   OFFER_MESSAGE, BAND_LABELS, BAND_EXPLANATIONS, DISCLAIMER, REFERRALS em nodes.py/cli.py/
+   tools.py) contra D-08 (sem claim clínico) e RNF-06 (tom acolhedor e neutro); confirme que
+   os 9 itens de data/pgsi.json batem literalmente com o Anexo A de docs/PLAN.md (D-07, sem
+   paráfrase) e que a escala e as faixas de severidade (0 sem_risco; 1-2 baixo; 3-7
+   moderado; 8-27 alto) batem exatamente com RF-08; identifique se existe teste que trava
+   esse conteúdo literal (regressão de copy) ou se ele pode mudar silenciosamente sem
+   quebrar nenhum teste.
+4. **Falhas sistêmicas**: liste e avalie a cobertura de cenários fora do caminho feliz do
+   ciclo LangGraph: resume com payload malformado ou tipo inesperado, resume de um thread
+   já finalizado ou com thread_id desconhecido, múltiplos interrupts pendentes, reentrada
+   duplicada de efeito colateral (R-02), comportamento do InMemorySaver entre processos
+   (perda de estado ao reiniciar, hoje uma limitação aceita, mas verifique se está
+   documentada e testada como tal); falhas de escrita do relatório (disco cheio, permissão
+   negada, diretório inexistente) direto em write_triage_report, não só simulado no nível do
+   CLI; comportamento real de timeout/max_retries do ChatOpenAI adicionado no O-03 (hoje só
+   testado por atributo do cliente, não por comportamento sob falha simulada); dado do PGSI
+   ausente ou corrompido no meio de uma sessão já em andamento (hoje só testado na carga
+   inicial).
+5. **Segurança**: não reabra achados já resolvidos pela auditoria OWASP (O-01 a O-08,
+   A-01 a A-08 em docs/OWASP_LLM_AUDIT_PLAN.md) nem pelo checklist adversarial manual do
+   O-06 — cite o que já está coberto e foque em ampliar a cobertura AUTOMATIZADA:
+   (a) corpus adversarial maior e determinístico para o parser/fallback e para o
+   classificador de intenção, além dos 6 casos manuais do O-06 (avalie se vale a pena uma
+   dependência de teste baseada em propriedade, ex. hypothesis, ou se um corpus fixo maior
+   já resolve, dado que o projeto evita dependências novas sem necessidade real);
+   (b) cobertura do heurístico de crise (safety.py) contra um corpus mais amplo de frases em
+   PT-BR, incluindo variações regionais/coloquiais, para reduzir o risco de falso negativo
+   do R-05 além do que test_safety.py já cobre hoje;
+   (c) robustez de MAX_ANSWER_LENGTH e MAX_RETRY_CYCLES contra casos de borda de encoding
+   (caracteres combinantes Unicode, emoji, grafemas multi-code-point) que possam burlar a
+   contagem de comprimento por `len()`;
+   (d) revisão rápida se a sanitização de nome de arquivo por thread_id em tools.py continua
+   coberta por teste adversarial suficiente.
+6. **Demais itens relevantes**: (a) consistência entre documentação e código: aponte
+   qualquer trecho de README.md, docs/ARCHITECTURE.md, docs/PRD.md ou docs/DECISIONS.md que
+   descreva comportamento diferente do código atual (ex. tabela de configuração da
+   ARCHITECTURE §9 ainda não lista TRIAGE_LLM_BASE_URL/TRIAGE_LLM_MODEL/TRIAGE_ALLOW_TRACING);
+   (b) meta-qualidade da própria suíte: teste flaky, teste redundante, e se um piloto de
+   mutation testing (amostral, não a suíte inteira) validaria que os testes realmente
+   travam o comportamento e não só passam; (c) se o code de format (`ruff format`, PR #17)
+   e o backlog condicional C-04/C-05 do CI_PLAN.md merecem alguma nota de acompanhamento
+   aqui (sem duplicar a decisão já registrada lá).
+7. Para cada achado (dimensões 2 a 6), classifique severidade (Crítico/Importante/Menor,
+   mesma escala do OWASP_LLM_AUDIT_PLAN.md) e esforço de correção estimado (baixo/médio/
+   alto), e proponha o teste exato que resolveria a lacuna (nome sugerido do teste, arquivo,
+   o que ele asserta).
+8. Dado o freeze de 19/07/2026: separe explicitamente, na priorização, o que é razoável
+   escrever antes do congelamento do que deveria virar backlog explícito para depois (não
+   liste tudo sem corte; se a lista for grande, diga isso e proponha o corte).
+9. Liste as perguntas abertas que exigem decisão humana antes de qualquer implementação
+   (ex.: vale adicionar hypothesis como dependência de teste nova, ou um corpus fixo maior
+   já basta; quanto esforço cabe antes do freeze vs. vira backlog pós-v0.1; se um piloto de
+   mutation testing entra nesta rodada ou fica para depois; se a auditoria de
+   documentação-vs-código do item 6a gera correções de doc nesta sessão ou só backlog).
+
+# Formato
+Crie o arquivo docs/TEST_AUDIT_PLAN.md com estas seções:
+1. "Resumo do entendimento" (máximo 10 linhas);
+2. "Matriz de conformidade" (RF/RNF/aceites/decisões D/riscos R vs. teste que prova cada um,
+   com lacunas marcadas explicitamente);
+3. "Achados por área" (uma subseção por dimensão: qualidade das respostas, falhas
+   sistêmicas, segurança adicional, demais itens; tabela por achado: ID (prefixo F-, ex.
+   F-01) | Área | Achado | Severidade | Esforço | Arquivo(s) | Teste proposto);
+4. "Backlog de implementação" (tabela ID (prefixo B-, ex. B-01) | Tarefa | Arquivos | Teste
+   | Commit sugerido, no mesmo formato de docs/PLAN.md, docs/CI_PLAN.md e
+   docs/OWASP_LLM_AUDIT_PLAN.md, com uma coluna extra indicando se cabe antes do freeze de
+   19/07 ou vira backlog pós-v0.1);
+5. "Perguntas abertas" (cada uma com recomendação).
+Registre esta sessão em docs/prompts.md como P-006 (prompt e resultado), na seção
+"1. Planejamento", no padrão do arquivo.
+Ao final, imprima no chat apenas o resumo do entendimento, os achados priorizados (Crítico/
+Importante primeiro) e as perguntas abertas, e pare aguardando as respostas antes de
+qualquer implementação.
+```
+
+**Resultado**: `docs/TEST_AUDIT_PLAN.md` criado com as 5 seções pedidas mais um anexo. A exploração cruzou todo o src/triagem/, os 12 arquivos de teste + conftest (212 testes, 86 funções) e os 8 documentos de referência. Matriz de conformidade com 37 itens (RF-01 a RF-10, RNF-01 a RNF-06, aceites 1-6, D-01 a D-09, R-01 a R-07), cada um apontando o teste exato que o prova ou a lacuna. Verificações positivas registradas: os 9 itens do data/pgsi.json batem literalmente com o Anexo A do PLAN.md (D-07), a escala e as faixas batem com RF-08, e a copy atual está conforme D-08/RNF-06; o problema é que nada disso é travado por teste. Resultado da varredura: 19 achados (F-01 a F-19), 0 Críticos, 7 Importantes (F-01 copy não travada; F-02 itens do PGSI sem trava verbatim; F-06 rollback do relatório sem teste; F-11 só 2 dos 6 casos adversariais do O-06 automatizados; F-12 corpus de crise cobre ~6 de ~30 termos do heurístico, risco R-05; F-15 docs desatualizadas vs código, consolidadas em checklist para o T-21; F-18 nenhum teste automatizado exercita o LLM real local) e 12 Menores. Um requisito adicional dado pelo usuário durante a sessão (cobrir também execução, stress, bugs e segurança com o LLM real local configurado no .env, não somente o FakeLLM) virou a área 3.5 do documento (F-18/F-19), com a proposta de um tier opt-in `@pytest.mark.real_llm` (skip automático sem endpoint; `uv run pytest` padrão e CI continuam 100% offline, preservando RNF-02/RNF-04). Backlog B-01 a B-15 com corte explícito para o freeze de 19/07: B-01 a B-08 pré-freeze (duas sessões: B-01 a B-06 test-only offline; B-07/B-08 infraestrutura do tier real + automação do checklist adversarial contra o modelo real), B-09 a B-15 pós-v0.1. Sete perguntas abertas com recomendação (hypothesis, corte pré-freeze, mutation testing, docs-vs-código, suficiência do teste por atributo do O-03, carga do .env no tier real, tier real fora do CI) apresentadas no chat ao final, aguardando decisão antes de qualquer implementação. Nenhum teste novo escrito, nenhum código de produção ou teste existente alterado, conforme escopo. **PR #18**.
+
 ## 2. Implementação
 
 ### I-001: Implementação do lote do dia 13/07, T-01 a T-06 (Claude Code, 12/07)
