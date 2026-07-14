@@ -101,7 +101,7 @@ Nota (não é achado): múltiplos interrupts pendentes não se aplicam ao grafo 
 
 | ID | Área | Achado | Severidade | Esforço | Arquivo(s) | Teste proposto |
 |---|---|---|---|---|---|---|
-| F-18 | Tier real inexistente | A fixture autouse offline_env força TRIAGE_FAKE_LLM=1 em 100% da suíte: nenhum teste automatizado jamais exercita o classificador real, o fallback real ou a triagem e2e com o modelo real (oMLX + Qwen3.6-35B-A3B-4bit, localhost:8000, Bearer token no .env). A única validação real foi o checklist manual do O-06, não repetível por comando. Sem um tier real, regressões de integração (structured output, timeout, auth, sincronia fake vs real do D-05) só aparecem em uso manual | Importante | médio | tests/conftest.py, novo tests/test_real_llm.py, pyproject.toml | tier opt-in `@pytest.mark.real_llm`: (a) marker registrado no pyproject; (b) offline_env não força o fake em testes marcados; (c) fixture de gate com skip automático se TRIAGE_LLM_BASE_URL/TRIAGE_LLM_MODEL ausentes ou endpoint inativo; (d) carga do .env conforme pergunta aberta 6. Testes: ::test_real_llm_smoke_full_triage (e2e com respostas mistas dígito/texto; asserts por invariante: score/faixa de função controlada, relatório gravado), ::test_real_parser_adversarial_corpus e ::test_real_classifier_adversarial (automação do checklist O-06: valor aceito nunca é o injetado, retorno em {0..3, None}, intents nas categorias esperadas), ::test_real_fallback_rescues_legitimate_off_table (caso de controle "quase todo santo dia, sem exagero") |
+| F-18 | Tier real inexistente | A fixture autouse offline_env força TRIAGE_FAKE_LLM=1 em 100% da suíte: nenhum teste automatizado jamais exercita o classificador real, o fallback real ou a triagem e2e com o modelo real (oMLX + Qwen3.6-35B-A3B-4bit, localhost:8000, Bearer token no .env). A única validação real foi o checklist manual do O-06, não repetível por comando. Sem um tier real, regressões de integração (structured output, timeout, auth, sincronia fake vs real do D-05) só aparecem em uso manual | Importante | médio | tests/conftest.py, novo tests/test_real_llm.py, pyproject.toml | tier opt-in `@pytest.mark.real_llm`: (a) marker registrado no pyproject; (b) offline_env não força o fake em testes marcados; (c) fixture de gate com skip automático se TRIAGE_LLM_BASE_URL/TRIAGE_LLM_MODEL ausentes ou endpoint inativo; (d) carga do .env por parser mínimo no conftest do tier, sem depender de python-dotenv (decisão do usuário na pergunta 6). Testes: ::test_real_llm_smoke_full_triage (e2e com respostas mistas dígito/texto; asserts por invariante: score/faixa de função controlada, relatório gravado), ::test_real_parser_adversarial_corpus e ::test_real_classifier_adversarial (automação do checklist O-06: valor aceito nunca é o injetado, retorno em {0..3, None}, intents nas categorias esperadas), ::test_real_fallback_rescues_legitimate_off_table (caso de controle "quase todo santo dia, sem exagero") |
 | F-19 | Stress real | Nenhum teste de robustez sob carga com o modelo real: sessões consecutivas, respostas no limite de 300 caracteres caindo no fallback, latência acumulada, comportamento do timeout=30/max_retries=2 contra endpoint inativo ou porta errada (exercitaria o F-07 de verdade) | Menor | médio | tests/test_real_llm.py | ::test_real_llm_stress_sequential_sessions (N sessões e2e seguidas com limite generoso de tempo), ::test_real_llm_max_length_answers_hit_fallback, ::test_real_llm_timeout_against_dead_port (TRIAGE_LLM_BASE_URL apontando para porta fechada: erro em tempo limitado, sem travar) |
 
 ## 4. Backlog de implementação
@@ -116,7 +116,7 @@ Mesmo formato de docs/PLAN.md, docs/CI_PLAN.md e docs/OWASP_LLM_AUDIT_PLAN.md, c
 | B-04 | Ampliar o corpus da heurística de crise: todos os termos de CRISIS_TERMS em frases + coloquiais já capturados + negativos (F-12) | tests/test_safety.py | test_check_crisis_every_term_fires + test_check_crisis_colloquial_positives | `test: broaden crisis heuristic corpus` | pré-freeze |
 | B-05 | Falhas de escrita do relatório no nível da função (colisão do .json com rollback do .md, PermissionError) + corpus de sanitização de thread_id (F-06, F-14) | tests/test_report.py | 3 testes novos | `test: cover report failure paths and filename sanitization` | pré-freeze |
 | B-06 | Resume não-string documentado + bordas Unicode do limite de 300 (F-04, F-13) | tests/test_graph_e2e.py | 2 testes paramétricos | `test: cover resume coercion and unicode length edges` | pré-freeze |
-| B-07 | Infraestrutura do tier real: marker `real_llm` no pyproject, offline_env respeitando o marker, fixture de gate com skip automático (endpoint ausente/inativo), carga do .env conforme pergunta aberta 6 (F-18) | tests/conftest.py, pyproject.toml | `pytest` padrão continua verde offline; `pytest -m real_llm` sem endpoint = tudo skipped | `test: add opt-in real llm test tier` | pré-freeze |
+| B-07 | Infraestrutura do tier real: marker `real_llm` no pyproject, offline_env respeitando o marker, fixture de gate com skip automático (endpoint ausente/inativo), carga do .env por parser mínimo no conftest (sem python-dotenv, decisão do usuário) (F-18) | tests/conftest.py, pyproject.toml | `pytest` padrão continua verde offline; `pytest -m real_llm` sem endpoint = tudo skipped | `test: add opt-in real llm test tier` | pré-freeze |
 | B-08 | Smoke e2e real + automação do checklist adversarial O-06 contra o modelo real + caso de controle legítimo (F-18) | tests/test_real_llm.py (novo) | 4 testes por invariante (tolerantes ao não-determinismo do modelo) | `test: automate adversarial checklist against local llm` | pré-freeze |
 | B-09 | Corrupção do pgsi.json no meio da sessão + teste documentando a limitação do InMemorySaver (F-08, F-09) | tests/test_graph_e2e.py | 2 testes | `test: cover mid-session data corruption and persistence limits` | pós-v0.1 (entra no pré-freeze se sobrar tempo) |
 | B-10 | Resume de thread finalizado/desconhecido (F-05) | tests/test_graph_e2e.py | 2 testes | `test: cover resume on finished and unknown threads` | pós-v0.1 |
@@ -130,13 +130,49 @@ O F-15 não vira item B: é doc-only e entra como checklist no Anexo A, para exe
 
 ## 5. Perguntas abertas
 
-1. Vale adicionar hypothesis como dependência de teste, ou um corpus fixo maior já basta? Recomendação: não adicionar agora; o corpus fixo determinístico (B-03/B-04) cumpre o objetivo sem dependência nova; reavaliar pós-v0.1 (B-15).
-2. Quanto esforço cabe antes do freeze de 19/07? Recomendação: B-01 a B-08 em duas sessões de implementação (B-01 a B-06 test-only offline; B-07/B-08 tier real). Se o tempo apertar por causa de T-19 a T-24, o corte mínimo é B-02 + B-04 + B-07/B-08 (instrumento validado, crise e o tier real, que torna repetível a validação do residual do A-06 antes da tag).
-3. O piloto de mutation testing entra nesta rodada ou fica para depois? Recomendação: pós-v0.1 (B-13), amostral sobre parsing/safety/tools.
-4. A auditoria doc-vs-código (F-15) gera correções de doc nesta sessão ou só backlog? Recomendação: só backlog; consolidar como checklist anexado ao T-21 (já pendente e planejado), evitando PRs duplicados.
-5. O teste por atributo do O-03 (timeout/max_retries) basta para a v0.1? Recomendação: sim; o enforcement é do cliente OpenAI; o comportamento sob falha vira B-11 (simulado) e B-12 (real) pós-v0.1.
-6. Como o tier real carrega o .env (que não é auto-carregado, sem python-dotenv instalado)? Recomendação: adicionar python-dotenv ao grupo dev e reutilizar load_dotenv_if_available() do cli no conftest do tier; alternativa sem dependência nova: parser mínimo de .env no conftest ou exigir export manual das variáveis.
-7. Os testes do tier real entram no CI? Recomendação: não; o CI continua 100% offline (o runner do GitHub não alcança localhost:8000); o tier real roda localmente por comando explícito (`uv run pytest -m real_llm`) e o resultado de cada rodada pré-tag é registrado em docs/prompts.md, como foi feito no O-06.
+Todas as sete perguntas foram decididas via AskUserQuestion em 13/07/2026, na mesma sessão de planejamento (P-006), após o merge do PR #18.
+
+### 1. Vale adicionar hypothesis como dependência de teste, ou um corpus fixo maior já basta?
+
+Recomendação: não adicionar agora; o corpus fixo determinístico (B-03/B-04) cumpre o objetivo sem dependência nova; reavaliar pós-v0.1 (B-15).
+
+**Decisão do usuário (13/07/2026)**: conforme a recomendação (corpus fixo, sem hypothesis nesta rodada).
+
+### 2. Quanto esforço cabe antes do freeze de 19/07?
+
+Recomendação: B-01 a B-08 em duas sessões de implementação (B-01 a B-06 test-only offline; B-07/B-08 tier real). Se o tempo apertar por causa de T-19 a T-24, o corte mínimo é B-02 + B-04 + B-07/B-08 (instrumento validado, crise e o tier real, que torna repetível a validação do residual do A-06 antes da tag).
+
+**Decisão do usuário (13/07/2026)**: conforme a recomendação (B-01 a B-08 completo antes do freeze, em duas sessões de implementação).
+
+### 3. O piloto de mutation testing entra nesta rodada ou fica para depois?
+
+Recomendação: pós-v0.1 (B-13), amostral sobre parsing/safety/tools.
+
+**Decisão do usuário (13/07/2026)**: conforme a recomendação (pós-v0.1).
+
+### 4. A auditoria doc-vs-código (F-15) gera correções de doc nesta sessão ou só backlog?
+
+Recomendação: só backlog; consolidar como checklist anexado ao T-21 (já pendente e planejado), evitando PRs duplicados.
+
+**Decisão do usuário (13/07/2026)**: conforme a recomendação (só backlog, checklist do Anexo A executa junto com o T-21).
+
+### 5. O teste por atributo do O-03 (timeout/max_retries) basta para a v0.1?
+
+Recomendação: sim; o enforcement é do cliente OpenAI; o comportamento sob falha vira B-11 (simulado) e B-12 (real) pós-v0.1.
+
+**Decisão do usuário (13/07/2026)**: conforme a recomendação (teste por atributo basta; comportamento sob falha fica para B-11/B-12 pós-v0.1).
+
+### 6. Como o tier real carrega o .env (que não é auto-carregado, sem python-dotenv instalado)?
+
+Recomendação: adicionar python-dotenv ao grupo dev e reutilizar load_dotenv_if_available() do cli no conftest do tier; alternativa sem dependência nova: parser mínimo de .env no conftest ou exigir export manual das variáveis.
+
+**Decisão do usuário (13/07/2026)**: DIFERENTE da recomendação. Parser mínimo de .env no conftest do tier, sem adicionar python-dotenv. Consequência aplicada neste documento: B-07 e F-18 atualizados para "carga do .env por parser mínimo no conftest, sem depender de python-dotenv"; nenhuma dependência nova entra no grupo dev por causa do tier real.
+
+### 7. Os testes do tier real entram no CI?
+
+Recomendação: não; o CI continua 100% offline (o runner do GitHub não alcança localhost:8000); o tier real roda localmente por comando explícito (`uv run pytest -m real_llm`) e o resultado de cada rodada pré-tag é registrado em docs/prompts.md, como foi feito no O-06.
+
+**Decisão do usuário (13/07/2026)**: conforme a recomendação (tier real fica fora do CI, só local).
 
 ## Anexo A. Checklist doc-vs-código para o T-21 (F-15)
 
