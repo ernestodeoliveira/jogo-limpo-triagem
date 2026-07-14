@@ -92,17 +92,49 @@ def test_ambiguous_or_off_table_is_none(text):
         "– 2",  # en dash + space
         "﹣3",  # small hyphen-minus
         "－3",  # fullwidth hyphen-minus
+        "⁻1",  # superscript minus
+        "₋1",  # subscript minus
+        "˗1",  # modifier letter minus sign
+        "⁃1",  # hyphen bullet
+        "⸺1",  # two-em dash (Pd, caught structurally, not individually listed)
+        "⸻2",  # three-em dash
+        "֊2",  # armenian hyphen
+        "〜3",  # wave dash
+        "​-1",  # zero-width space before the ASCII hyphen (F-21)
+        "⁠-2",  # word joiner before the ASCII hyphen
+        "﻿-3",  # BOM before the ASCII hyphen
     ],
 )
 def test_out_of_scale_bare_number_is_none(text):
-    # normalize() must not strip the leading '-': stripping it collapsed
-    # "-1"/"-2"/"-3" onto the valid table keys "1"/"2"/"3", accepting an
-    # out-of-scale answer as valid before it ever reached the LLM fallback
-    # or the self-consistency defense (B-16 review finding). The Unicode
-    # dash/minus variants are the same class of bug (F-20): normalize()
-    # folds every one of them to a space, so each would collapse onto a
-    # valid table key just like the ASCII "-1" did.
+    # normalize() must not strip a leading minus-like sign: stripping it
+    # collapsed "-1"/"-2"/"-3" onto the valid table keys "1"/"2"/"3",
+    # accepting an out-of-scale answer as valid before it ever reached the
+    # LLM fallback or the self-consistency defense (B-16 review finding).
+    # The Unicode dash/minus variants and the invisible-character-prefixed
+    # cases are the same class of bug (F-20/F-21): normalize() folds all of
+    # them away, so each would collapse onto a valid table key just like
+    # the ASCII "-1" did. The guard checks the Unicode category of the
+    # leading visible character structurally, so most dash confusables
+    # (Pd category) are caught without being listed individually.
     assert parse_answer_deterministic(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("(1)", 1),  # non-dash punctuation around a digit: not a minus sign
+        ("1)", 1),
+        ("​1", 1),  # invisible char with no dash to hide: still a plain digit
+        ("​-nunca", 0),  # invisible char before a WORD answer, no digit follows
+    ],
+)
+def test_leading_minus_guard_does_not_reject_unrelated_input(text, expected):
+    # The structural guard only rejects a minus-like leading sign directly
+    # followed by a digit; unrelated punctuation, invisible characters with
+    # no dash to hide, or a dash not immediately before a digit must keep
+    # parsing exactly as before (no scope creep beyond the F-20/F-21 bug
+    # class).
+    assert parse_answer_deterministic(text) == expected
 
 
 @pytest.mark.parametrize(

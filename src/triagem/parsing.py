@@ -46,23 +46,54 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", stripped)).strip()
 
 
-# Besides the ASCII '-', covers the Unicode dash block (hyphen U+2010
-# through horizontal bar U+2015), the minus sign U+2212 and its small and
-# fullwidth compatibility forms (U+FE63, U+FF0D): normalize() folds every
-# one of them to a space, so any of them before a digit would collapse
-# onto a valid table key exactly like the ASCII "-1" did (F-20).
-_LEADING_NEGATIVE_NUMBER = re.compile(r"^[-‐-―−﹣－]\s*\d")
+# Dash Punctuation (Unicode category Pd) covers the ASCII hyphen and nearly
+# every dash-like character (Unicode hyphens, en/em dashes, the fullwidth
+# and small compatibility forms, wave dash, etc). A handful of characters
+# that read as "minus" to a person are categorized as symbols instead of
+# dashes, so they fall outside Pd and must be listed explicitly.
+_EXTRA_MINUS_LIKE = frozenset(
+    "⁻"  # superscript minus
+    "₋"  # subscript minus
+    "−"  # minus sign
+    "˗"  # modifier letter minus sign
+    "⁃"  # hyphen bullet
+)
+
+
+def _has_leading_minus_before_digit(text: str) -> bool:
+    """True when, ignoring whitespace and invisible formatting characters
+    (Unicode category Cf: zero-width space, word joiner, BOM...), the first
+    visible character is a minus-like sign directly followed by a digit.
+
+    Checks the CATEGORY of the leading character structurally instead of
+    denylisting individual dash characters, so it isn't limited to a fixed
+    enumeration (F-20/F-21 review findings): any character that reads as
+    "minus" to a person, immediately before a digit, is rejected before
+    normalize() gets a chance to fold it away and collapse the input onto a
+    valid table key like "1" (as plain "-1" would otherwise do).
+    """
+    visible = [ch for ch in text if unicodedata.category(ch) != "Cf"]
+    stripped = "".join(visible).lstrip()
+    if not stripped:
+        return False
+    first = stripped[0]
+    is_minus_like = unicodedata.category(first) == "Pd" or first in _EXTRA_MINUS_LIKE
+    if not is_minus_like:
+        return False
+    rest = stripped[1:].lstrip()
+    return bool(rest) and rest[0].isdigit()
 
 
 def parse_answer_deterministic(text: str) -> int | None:
     """Exact match of the full normalized string; anything else is None (D-03).
 
-    A leading negative sign before a digit is rejected up front: normalize()
-    folds '-' to a space (needed by other consumers, see its docstring), so
-    without this guard "-1" would otherwise collapse onto the valid table
-    key "1" (B-16 review finding).
+    A leading minus-like sign before a digit is rejected up front:
+    normalize() folds punctuation (including every dash/minus character) to
+    a space, so without this guard "-1" (or a confusable variant) would
+    otherwise collapse onto the valid table key "1" (B-16/F-20/F-21 review
+    findings).
     """
-    if _LEADING_NEGATIVE_NUMBER.match(text.strip()):
+    if _has_leading_minus_before_digit(text):
         return None
     return ANSWER_TABLE.get(normalize(text))
 
