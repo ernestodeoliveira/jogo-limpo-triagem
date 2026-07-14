@@ -5,6 +5,7 @@ import pytest
 from triagem.fakes import FakeLLM
 from triagem.parsing import (
     PARSE_SYSTEM_PROMPT,
+    majority_vote,
     make_answer_parser,
     normalize,
     parse_answer_deterministic,
@@ -81,6 +82,32 @@ def test_ambiguous_or_off_table_is_none(text):
 )
 def test_embedded_instruction_is_invalid(text):
     assert parse_answer_deterministic(text) is None
+
+
+def test_majority_vote_unanimous_valid_value():
+    assert majority_vote([3, 3, 3]) == 3
+
+
+def test_majority_vote_clear_majority_wins_even_when_it_is_the_bypass():
+    # Documents the known limitation (docs/PARSER_HARDENING_PLAN.md, B-16):
+    # 2 of 3 samples agreeing with an injected value still wins the vote.
+    assert majority_vote([3, 3, None]) == 3
+
+
+def test_majority_vote_unanimous_null():
+    assert majority_vote([None, None, None]) is None
+
+
+def test_majority_vote_null_majority():
+    assert majority_vote([None, None, 3]) is None
+
+
+def test_majority_vote_no_majority_all_disagree():
+    assert majority_vote([3, 0, None]) is None
+
+
+def test_majority_vote_exact_tie_even_count():
+    assert majority_vote([3, 3, None, None]) is None
 
 
 class SpyAnswerLLM:
