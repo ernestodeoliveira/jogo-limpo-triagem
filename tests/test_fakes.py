@@ -115,11 +115,14 @@ def test_structured_runnable_reads_last_message_content():
 
 class ScriptedSequenceAnswerLLM:
     """Local double for the real chat model: returns one value per
-    successive invoke() call from a fixed sequence, records messages.
+    successive invoke()/batch() item from a fixed sequence, records
+    messages. An Exception instance in `values` is raised by invoke() and
+    returned as-is by batch(return_exceptions=True), so a test can script
+    exactly what each of the N self-consistency samples returns, including
+    a failed sample.
 
     Mirrors ScriptedAnswerLLM in tests/test_adversarial.py, but yields a
-    different value per call instead of a single fixed one, so a test can
-    script exactly what each of the N self-consistency samples returns.
+    different value per call instead of a single fixed one.
     """
 
     def __init__(self, values):
@@ -132,7 +135,23 @@ class ScriptedSequenceAnswerLLM:
         class _Runnable:
             def invoke(self, messages, config=None):
                 spy.calls.append(messages)
-                return schema(value=spy.values[len(spy.calls) - 1])
+                outcome = spy.values[len(spy.calls) - 1]
+                if isinstance(outcome, Exception):
+                    raise outcome
+                return schema(value=outcome)
+
+            def batch(self, inputs, config=None, *, return_exceptions=False):
+                results = []
+                for messages in inputs:
+                    spy.calls.append(messages)
+                    outcome = spy.values[len(spy.calls) - 1]
+                    if isinstance(outcome, Exception):
+                        if return_exceptions:
+                            results.append(outcome)
+                            continue
+                        raise outcome
+                    results.append(schema(value=outcome))
+                return results
 
         return _Runnable()
 
@@ -175,6 +194,28 @@ def test_self_consistency_returns_majority_value():
 
 def test_self_consistency_returns_none_without_majority():
     spy = ScriptedSequenceAnswerLLM([3, 0, None])
+    wrapped = SelfConsistencyLLM(spy, samples=3)
+
+    result = wrapped.with_structured_output(AnswerProbe).invoke("qualquer resposta")
+
+    assert result.value is None
+
+
+def test_self_consistency_treats_a_failed_sample_as_a_none_vote():
+    # A transient failure on one sample must not abort the whole parse
+    # (B-16 review finding): it degrades to a None vote, and the other
+    # samples can still form a majority.
+    spy = ScriptedSequenceAnswerLLM([3, RuntimeError("boom"), 3])
+    wrapped = SelfConsistencyLLM(spy, samples=3)
+
+    result = wrapped.with_structured_output(AnswerProbe).invoke("qualquer resposta")
+
+    assert result.value == 3
+    assert len(spy.calls) == 3
+
+
+def test_self_consistency_failed_sample_can_prevent_a_majority():
+    spy = ScriptedSequenceAnswerLLM([3, RuntimeError("boom"), 0])
     wrapped = SelfConsistencyLLM(spy, samples=3)
 
     result = wrapped.with_structured_output(AnswerProbe).invoke("qualquer resposta")

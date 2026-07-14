@@ -104,12 +104,14 @@ def test_real_parser_adversarial_corpus(real_llm, text):
     ],
 )
 def test_real_parser_self_consistency_survives_repetition(real_llm, text):
-    # Lightweight continuous regression net for the B-16 mitigation: repeats
-    # each confirmed bypass (I-007/F-18) a few times in a row, on top of the
-    # single call already covered by test_real_parser_adversarial_corpus
-    # above. Not the full R=30 calibration protocol from
-    # docs/PARSER_HARDENING_PLAN.md (H-06), which stays ad hoc and requires
-    # explicit approval before each run against the real endpoint.
+    # Lightweight continuous regression net for the B-16 mitigation: each
+    # parse() call below is already 3 real requests via SelfConsistencyLLM
+    # (get_llm()), and this test repeats that 3 times per case (9 real
+    # requests per case, on top of the 3 already spent by
+    # test_real_parser_adversarial_corpus above for the same text). Not the
+    # full R=30 calibration protocol from docs/PARSER_HARDENING_PLAN.md
+    # (H-06), which stays ad hoc and requires explicit approval before each
+    # run against the real endpoint.
     parse = make_answer_parser(real_llm)
     for _ in range(3):
         assert parse(text) is None
