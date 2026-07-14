@@ -12,6 +12,7 @@ from triagem.fakes import (
     FakeAnswerParser,
     FakeClassifier,
     FakeLLM,
+    SelfConsistencyLLM,
     get_llm,
 )
 
@@ -110,6 +111,87 @@ def test_structured_runnable_reads_last_message_content():
         ]
     )
     assert result.intent == "duvida"
+
+
+class ScriptedSequenceAnswerLLM:
+    """Local double for the real chat model: returns one value per
+    successive invoke() call from a fixed sequence, records messages.
+
+    Mirrors ScriptedAnswerLLM in tests/test_adversarial.py, but yields a
+    different value per call instead of a single fixed one, so a test can
+    script exactly what each of the N self-consistency samples returns.
+    """
+
+    def __init__(self, values):
+        self.values = list(values)
+        self.calls = []
+
+    def with_structured_output(self, schema):
+        spy = self
+
+        class _Runnable:
+            def invoke(self, messages, config=None):
+                spy.calls.append(messages)
+                return schema(value=spy.values[len(spy.calls) - 1])
+
+        return _Runnable()
+
+
+class FixedIntentLLM:
+    """Local double for the real chat model: always the same intent, records calls."""
+
+    def __init__(self, intent):
+        self.intent = intent
+        self.calls = []
+
+    def with_structured_output(self, schema):
+        spy = self
+
+        class _Runnable:
+            def invoke(self, messages, config=None):
+                spy.calls.append(messages)
+                return schema(intent=spy.intent)
+
+        return _Runnable()
+
+
+def test_self_consistency_calls_underlying_llm_n_times_for_value_schema():
+    spy = ScriptedSequenceAnswerLLM([3, 3, None])
+    wrapped = SelfConsistencyLLM(spy, samples=3)
+
+    wrapped.with_structured_output(AnswerProbe).invoke("qualquer resposta")
+
+    assert len(spy.calls) == 3
+
+
+def test_self_consistency_returns_majority_value():
+    spy = ScriptedSequenceAnswerLLM([3, 3, None])
+    wrapped = SelfConsistencyLLM(spy, samples=3)
+
+    result = wrapped.with_structured_output(AnswerProbe).invoke("qualquer resposta")
+
+    assert result.value == 3
+
+
+def test_self_consistency_returns_none_without_majority():
+    spy = ScriptedSequenceAnswerLLM([3, 0, None])
+    wrapped = SelfConsistencyLLM(spy, samples=3)
+
+    result = wrapped.with_structured_output(AnswerProbe).invoke("qualquer resposta")
+
+    assert result.value is None
+
+
+def test_self_consistency_passes_through_schemas_without_a_value_field():
+    # Documents the B-17 scope decision (docs/PARSER_HARDENING_PLAN.md):
+    # the classifier is unaffected, a single call, no voting.
+    spy = FixedIntentLLM("duvida")
+    wrapped = SelfConsistencyLLM(spy, samples=3)
+
+    result = wrapped.with_structured_output(IntentProbe).invoke("o que é este teste?")
+
+    assert result.intent == "duvida"
+    assert len(spy.calls) == 1
 
 
 def test_get_llm_returns_fake_when_flag_set():
