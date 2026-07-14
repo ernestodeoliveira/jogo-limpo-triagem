@@ -213,8 +213,10 @@ def test_get_llm_builds_chatopenai_when_configured(monkeypatch):
     from langchain_openai import ChatOpenAI
 
     llm = get_llm()  # constructing the client makes no network call
-    assert isinstance(llm, ChatOpenAI)
-    assert llm.model_name == "test-model"
+    # The real client is wrapped in the self-consistency defense (B-16, H-03).
+    assert isinstance(llm, SelfConsistencyLLM)
+    assert isinstance(llm.llm, ChatOpenAI)
+    assert llm.llm.model_name == "test-model"
 
 
 def test_get_llm_sets_timeout_and_max_retries(monkeypatch):
@@ -226,8 +228,8 @@ def test_get_llm_sets_timeout_and_max_retries(monkeypatch):
     assert LLM_MAX_RETRIES == 2
 
     llm = get_llm()
-    assert llm.request_timeout == LLM_TIMEOUT_SECONDS
-    assert llm.max_retries == LLM_MAX_RETRIES
+    assert llm.llm.request_timeout == LLM_TIMEOUT_SECONDS
+    assert llm.llm.max_retries == LLM_MAX_RETRIES
 
 
 def test_get_llm_warns_on_non_local_endpoint(monkeypatch, capsys):
