@@ -17,6 +17,7 @@ from triagem.graph import build_agent, read_interrupt_payload
 from triagem.nodes import (
     ABORT_MESSAGE,
     BAND_EXPLANATIONS,
+    BAND_LABELS,
     MAX_RETRY_CYCLES,
     RETRY_HINT,
     interpret_offer_reply,
@@ -456,3 +457,28 @@ def test_sixth_retry_cycle_aborts_politely(app, config):
     assert result["final_answer"] == ABORT_MESSAGE
     assert result["error"] == "max_invalid_attempts"
     assert result["score"] is None
+
+
+@pytest.mark.parametrize(
+    ("answers", "expected_band", "expected_score"),
+    [
+        (["0"] * 9, "sem_risco", 0),
+        (["0"] * 8 + ["1"], "baixo", 1),
+        (["1"] * 5 + ["0"] * 4, "moderado", 5),
+        # Score 10, distinct from HAPPY_REPLIES' score of 15 (already covered
+        # by test_full_triage above): still inside the 8-27 "alto" range.
+        (["2"] * 5 + ["0"] * 4, "alto", 10),
+    ],
+)
+def test_final_answer_matches_band(app, config, answers, expected_band, expected_score):
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    for reply in answers:
+        payload = read_interrupt_payload(result)
+        assert payload is not None
+        result = app.invoke(Command(resume=reply), config)
+
+    assert read_interrupt_payload(result) is None
+    assert result["score"] == expected_score
+    assert result["severity_band"] == expected_band
+    assert BAND_LABELS[expected_band] in result["final_answer"]
+    assert BAND_EXPLANATIONS[expected_band] in result["final_answer"]
