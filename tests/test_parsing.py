@@ -129,6 +129,13 @@ def test_majority_vote_exact_tie_even_count():
     assert majority_vote([3, 3, None, None]) is None
 
 
+def test_majority_vote_empty_list_fails_closed():
+    # Currently unreachable in production (samples is always 3), but the
+    # docstring promises fail-closed-to-None universally, not just when
+    # there is at least one vote (B-16 review finding).
+    assert majority_vote([]) is None
+
+
 class SpyAnswerLLM:
     """Local spy standing in for a real chat model.
 
