@@ -52,8 +52,10 @@ def parse_answer_deterministic(text: str) -> int | None:
 
 def majority_vote(values: list[int | None]) -> int | None:
     """Strict majority (more than half the votes) wins; fail closed to None
-    on a tie or when no value has a majority (B-16).
+    on a tie, an empty vote or when no value has a majority (B-16).
     """
+    if not values:
+        return None
     winner, count = Counter(values).most_common(1)[0]
     return winner if count > len(values) / 2 else None
 
