@@ -3,11 +3,14 @@
 parse_answer_deterministic, normalize and ANSWER_TABLE use only stdlib so
 fakes.py can import from this module without creating a cycle. The LLM
 fallback below adds a pydantic-based structured call for table misses,
-mirroring the pattern in classify.py.
+mirroring the pattern in classify.py. majority_vote is the aggregation
+logic for the self-consistency defense against the intermittent bypass
+confirmed in F-18 (docs/PARSER_HARDENING_PLAN.md, B-16).
 """
 
 import re
 import unicodedata
+from collections import Counter
 from typing import Callable, Literal
 
 from pydantic import BaseModel
@@ -41,6 +44,14 @@ def normalize(text: str) -> str:
 def parse_answer_deterministic(text: str) -> int | None:
     """Exact match of the full normalized string; anything else is None (D-03)."""
     return ANSWER_TABLE.get(normalize(text))
+
+
+def majority_vote(values: list[int | None]) -> int | None:
+    """Strict majority (more than half the votes) wins; fail closed to None
+    on a tie or when no value has a majority (B-16).
+    """
+    winner, count = Counter(values).most_common(1)[0]
+    return winner if count > len(values) / 2 else None
 
 
 # Static PT-BR system prompt; candidate for the S-0xx prompt log at T-19.
