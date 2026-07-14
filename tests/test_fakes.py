@@ -260,6 +260,22 @@ def test_get_llm_builds_chatopenai_when_configured(monkeypatch):
     assert llm.llm.model_name == "test-model"
 
 
+def test_get_llm_uses_current_self_consistency_samples(monkeypatch):
+    # SelfConsistencyLLM.__init__'s default binds at class-definition time,
+    # not per call, unlike LLM_TIMEOUT_SECONDS/LLM_MAX_RETRIES below, which
+    # get_llm() reads live; this locks in that get_llm() passes the current
+    # module-level value explicitly instead of relying on that stale default
+    # (B-16 review finding).
+    monkeypatch.setenv("TRIAGE_FAKE_LLM", "0")
+    monkeypatch.setenv("TRIAGE_LLM_BASE_URL", "http://localhost:8080/v1")
+    monkeypatch.setenv("TRIAGE_LLM_MODEL", "test-model")
+    monkeypatch.setattr("triagem.fakes.SELF_CONSISTENCY_SAMPLES", 5)
+
+    llm = get_llm()
+
+    assert llm.samples == 5
+
+
 def test_get_llm_sets_timeout_and_max_retries(monkeypatch):
     monkeypatch.setenv("TRIAGE_FAKE_LLM", "0")
     monkeypatch.setenv("TRIAGE_LLM_BASE_URL", "http://localhost:8080/v1")
