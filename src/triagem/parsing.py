@@ -37,16 +37,28 @@ ANSWER_TABLE = {
 def normalize(text: str) -> str:
     """Lowercase, strip accents and punctuation, collapse whitespace.
 
-    Keeps '-' so a bare out-of-scale answer like "-1" does not collapse
-    onto the valid table key "1" (B-16 review finding).
+    Folds '-' to a space like any other punctuation: safety.py's crisis
+    gate and nodes.py's retry-choice lookup both split this output on
+    whitespace to find whole words, and both share this function.
     """
     decomposed = unicodedata.normalize("NFKD", text.lower())
     stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 -]", " ", stripped)).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", stripped)).strip()
+
+
+_LEADING_NEGATIVE_NUMBER = re.compile(r"^-\s*\d")
 
 
 def parse_answer_deterministic(text: str) -> int | None:
-    """Exact match of the full normalized string; anything else is None (D-03)."""
+    """Exact match of the full normalized string; anything else is None (D-03).
+
+    A leading negative sign before a digit is rejected up front: normalize()
+    folds '-' to a space (needed by other consumers, see its docstring), so
+    without this guard "-1" would otherwise collapse onto the valid table
+    key "1" (B-16 review finding).
+    """
+    if _LEADING_NEGATIVE_NUMBER.match(text.strip()):
+        return None
     return ANSWER_TABLE.get(normalize(text))
 
 
