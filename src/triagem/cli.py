@@ -58,8 +58,12 @@ def render_question(payload: QuestionPayload) -> str:
     lines = []
     if payload["hint"]:
         lines.append(payload["hint"])
-    lines.append(f"Pergunta {payload['index'] + 1} de {payload['total']}: {payload['text']}")
-    lines.append("Escala: " + ", ".join(f"{k} = {v}" for k, v in payload["scale"].items()))
+    lines.append(
+        f"Pergunta {payload['index'] + 1} de {payload['total']}: {payload['text']}"
+    )
+    lines.append(
+        "Escala: " + ", ".join(f"{k} = {v}" for k, v in payload["scale"].items())
+    )
     return "\n".join(lines)
 
 
@@ -70,7 +74,11 @@ def render_offer(payload: OfferPayload) -> str:
 
 def render_payload(payload: QuestionPayload | OfferPayload) -> str:
     """Dispatch to render_question or render_offer based on payload['kind']."""
-    return render_question(payload) if payload["kind"] == "question" else render_offer(payload)
+    return (
+        render_question(payload)
+        if payload["kind"] == "question"
+        else render_offer(payload)
+    )
 
 
 def main() -> int:

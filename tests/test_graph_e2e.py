@@ -33,7 +33,15 @@ def test_first_invoke_pauses_with_question_one_payload(app, config):
 
     payload = read_interrupt_payload(result)
     assert payload is not None
-    assert set(payload) == {"kind", "question_id", "index", "total", "text", "scale", "hint"}
+    assert set(payload) == {
+        "kind",
+        "question_id",
+        "index",
+        "total",
+        "text",
+        "scale",
+        "hint",
+    }
     assert payload["kind"] == "question"
     assert payload["question_id"] == "q1"
     assert payload["index"] == 0
@@ -56,8 +64,15 @@ def test_happy_path_digits(app, config):
     assert read_interrupt_payload(result) is None
     assert "__interrupt__" not in result
     assert result["answers"] == {
-        "q1": 0, "q2": 1, "q3": 2, "q4": 3, "q5": 0,
-        "q6": 1, "q7": 2, "q8": 3, "q9": 3,
+        "q1": 0,
+        "q2": 1,
+        "q3": 2,
+        "q4": 3,
+        "q5": 0,
+        "q6": 1,
+        "q7": 2,
+        "q8": 3,
+        "q9": 3,
     }
     assert result["score"] == 15
     assert result["severity_band"] == "alto"
