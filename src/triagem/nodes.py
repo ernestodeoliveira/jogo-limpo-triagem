@@ -72,10 +72,18 @@ OFFER_MESSAGE = (
     "novo ou prefere encerrar por aqui?"
 )
 
-RETRY_CHOICES = frozenset({
-    "tentar de novo", "tentar novamente", "quero tentar de novo",
-    "tentar", "continuar", "de novo", "novamente", "sim",
-})
+RETRY_CHOICES = frozenset(
+    {
+        "tentar de novo",
+        "tentar novamente",
+        "quero tentar de novo",
+        "tentar",
+        "continuar",
+        "de novo",
+        "novamente",
+        "sim",
+    }
+)
 
 INFO_MESSAGE = (
     "Este é o PGSI (Índice de gravidade de problemas com apostas), um "

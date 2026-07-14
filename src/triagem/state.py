@@ -8,7 +8,9 @@ class TriageState(TypedDict):
     user_input: str
     intent: Literal["iniciar", "responder", "duvida", "fora_dominio"] | None
     phase: Literal["acolhimento", "triagem", "crise", "resultado"] | None
-    current_question: int  # 0..9: index of the next item; 9 means questionnaire complete
+    current_question: (
+        int  # 0..9: index of the next item; 9 means questionnaire complete
+    )
     attempts: int  # invalid attempts for the current item
     retry_cycles: int  # retry_offer cycles accepted this session (A-08)
     answers: Annotated[dict, operator.or_]  # {"q1": 2, ...} merged across turns

@@ -14,7 +14,12 @@ def _question_payload(hint=None):
         "index": 0,
         "total": 9,
         "text": "Você apostou mais do que podia perder?",
-        "scale": {"0": "Nunca", "1": "Às vezes", "2": "Na maioria das vezes", "3": "Quase sempre"},
+        "scale": {
+            "0": "Nunca",
+            "1": "Às vezes",
+            "2": "Na maioria das vezes",
+            "3": "Quase sempre",
+        },
         "hint": hint,
     }
 
