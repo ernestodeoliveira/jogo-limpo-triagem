@@ -46,56 +46,43 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", stripped)).strip()
 
 
-# Dash Punctuation (Unicode category Pd) covers the ASCII hyphen and nearly
-# every dash-like character (Unicode hyphens, en/em dashes, the fullwidth
-# and small compatibility forms, wave dash, etc). A handful of characters
-# that read as "minus" to a person are categorized as symbols instead of
-# dashes, so they fall outside Pd and must be listed explicitly.
-_EXTRA_MINUS_LIKE = frozenset(
-    "⁻"  # superscript minus
-    "₋"  # subscript minus
-    "−"  # minus sign
-    "˗"  # modifier letter minus sign
-    "⁃"  # hyphen bullet
-)
+_BARE_DIGIT_KEYS = frozenset({"0", "1", "2", "3"})
 
 
-def _has_leading_minus_before_digit(text: str) -> bool:
-    """True when, ignoring whitespace and invisible formatting characters
-    (Unicode category Cf: zero-width space, word joiner, BOM...), the first
-    visible character is a minus-like sign directly followed by a digit.
-
-    Checks the CATEGORY of the leading character structurally instead of
-    denylisting individual dash characters, so it isn't limited to a fixed
-    enumeration (F-20/F-21 review findings): any character that reads as
-    "minus" to a person, immediately before a digit, is rejected before
-    normalize() gets a chance to fold it away and collapse the input onto a
-    valid table key like "1" (as plain "-1" would otherwise do).
-    """
-    visible = [ch for ch in text if unicodedata.category(ch) != "Cf"]
-    stripped = "".join(visible).lstrip()
-    if not stripped:
-        return False
-    first = stripped[0]
-    is_minus_like = unicodedata.category(first) == "Pd" or first in _EXTRA_MINUS_LIKE
-    if not is_minus_like:
-        return False
-    rest = stripped[1:].lstrip()
-    return bool(rest) and rest[0].isdigit()
+def _visible_content(text: str) -> str:
+    """Text with only whitespace and invisible/format characters (Unicode
+    category Cf: zero-width space, word joiner, BOM...) removed; every
+    other character, including any dash/minus/symbol/combining mark, is
+    kept exactly as-is for comparison against normalize()'s output."""
+    return "".join(
+        ch for ch in text if not ch.isspace() and unicodedata.category(ch) != "Cf"
+    )
 
 
 def parse_answer_deterministic(text: str) -> int | None:
     """Exact match of the full normalized string; anything else is None (D-03).
 
-    A leading minus-like sign before a digit is rejected up front:
-    normalize() folds punctuation (including every dash/minus character) to
-    a space, so without this guard "-1" (or a confusable variant) would
-    otherwise collapse onto the valid table key "1" (B-16/F-20/F-21 review
-    findings).
+    When normalize() collapses the input onto a bare table digit ("0".."3"),
+    require that the visible content of the raw text (ignoring only
+    whitespace and invisible formatting characters) IS that digit and
+    nothing else. Two rounds of review found that denylisting specific
+    "looks like a minus sign" characters before a digit (ASCII "-1", then
+    an enumerated set of Unicode dashes, then a Unicode-category check) kept
+    missing further confusables (superscript/subscript minus, box-drawing
+    and emoji dashes, ordinary punctuation, combining marks, invisible
+    joiners wedged between the sign and the digit...), because normalize()
+    folds away far more than any fixed list of "minus-like" characters can
+    enumerate (B-16/F-20/F-21/F-22 review findings). This check instead
+    asks the only question that matters: did normalize() have to fold away
+    ANYTHING besides whitespace/invisible characters to reach this digit?
+    If so, the input wasn't unambiguously that digit, so it must not be
+    silently accepted here; it falls through to the LLM fallback like any
+    other ambiguous answer, which is the intended safe default (D-03).
     """
-    if _has_leading_minus_before_digit(text):
+    normalized = normalize(text)
+    if normalized in _BARE_DIGIT_KEYS and _visible_content(text) != normalized:
         return None
-    return ANSWER_TABLE.get(normalize(text))
+    return ANSWER_TABLE.get(normalized)
 
 
 def majority_vote(values: list[int | None]) -> int | None:
