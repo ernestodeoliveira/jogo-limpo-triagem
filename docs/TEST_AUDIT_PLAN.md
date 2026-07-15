@@ -229,3 +229,60 @@ Recomendação: todos os 6, mais o B-15 aprovado na pergunta 8. O B-12 exige o e
 - [ ] README §12: wording da fonte para "versão brasileira com adaptação transcultural e validade de conteúdo (Moura et al., 2026)".
 - [ ] PRD RNF-01: nota de que o .env.example atual reflete o endpoint local (não GOOGLE_API_KEY).
 - [ ] O-05/O-08 (OWASP): proveniência do modelo e limitação de relatórios em texto plano, já parqueados para o mesmo lote.
+
+## Anexo B. Piloto de mutation testing (B-13, sessão I-011)
+
+Executado com `mutmut` 2.5.1 (`uvx --python 3.11 --from 'mutmut<3' mutmut run --paths-to-mutate src/triagem/parsing.py,src/triagem/safety.py,src/triagem/tools.py --runner "uv run pytest -x -q"`) sobre os 3 arquivos completos, sem amostragem, conforme decidido na pergunta 9. Execução total: ~5m13s, bem dentro do limite de ~20 minutos; nenhum corte foi necessário.
+
+**Nota operacional**: `uvx --from 'mutmut<3' mutmut` sem `--python 3.11` quebra os comandos `results`/`show`/`junitxml` com um `TypeError: 'QueryResultIterator' object is not iterable` (incompatibilidade do `pony-orm`, dependência do mutmut, com o Python 3.13 que o `uvx` resolve por padrão para o ambiente isolado da ferramenta). Fixar `--python 3.11` (mesma versão do projeto) resolve; a mutação e a execução dos testes em si rodam por um subprocesso separado (`uv run pytest`, no venv do projeto) e não são afetadas por esse bug, só o relatório é.
+
+### Números agregados
+
+| Arquivo | Linhas | Mutantes gerados | Mortos | Sobreviventes |
+|---|---|---|---|---|
+| `src/triagem/parsing.py` | 155 | 91 | 70 | 21 |
+| `src/triagem/safety.py` | 98 | 66 | 55 | 11 |
+| `src/triagem/tools.py` | 206 | 137 | 97 | 40 |
+| **Total** | 459 | **294** | **222 (75,5%)** | **72 (24,5%)** |
+
+### Achado de ferramenta: falso sobrevivente sistemático em `safety.py`
+
+Os 11 sobreviventes de `safety.py` são **falsos sobreviventes**, causados por uma limitação conhecida do `mutmut` 2.5.1, não por lacuna de teste. Toda mutação nesse arquivo mutou uma das 6 listas de termos de crise para `None` ou trocou um `+` por `-` na expressão `CRISIS_TERMS = frozenset(_SUICIDAL_PHRASES + _SUICIDAL_WORDS + ...)`. Qualquer uma dessas mutações quebra a importação do módulo com `TypeError` (`unsupported operand type(s) for +/-: 'NoneType'/'list' and 'list'`), o que faz `conftest.py` falhar ao importar e a suíte inteira falhar na coleta, sem rodar um teste sequer. O `pytest` sai com código 4 (erro de coleta) nesse caso, não 1 (falha de asserção); a função interna `tests_pass` do mutmut (`mutmut/__init__.py`, por volta da linha 865) faz `return returncode != 1`, então QUALQUER código de saída diferente de 1, incluindo o 4, é tratado como "os testes passaram", classificando erroneamente o mutante como sobrevivente. Verificado empiricamente aplicando 2 mutações representativas (`_SUICIDAL_PHRASES = None` e `_SUICIDAL_PHRASES + _SUICIDAL_WORDS` → `_SUICIDAL_PHRASES - _SUICIDAL_WORDS`) e confirmando o traceback e o código de saída real (4) antes de reverter; as outras 9 compartilham a mesma estrutura mecânica (mesma expressão, mesmo tipo de quebra) e não foram reexecutadas individualmente. Achado análogo (1 mutante) em `tools.py` (ID 233, `@model_validator(mode="after")` → `mode="XXafterXX"`, rejeitado pelo Pydantic na construção do schema de `TriageOutcome`, mesmo padrão de crash na importação). Taxa de morte real ajustada (contando esses 12 como efetivamente mortos): 234/294 = 79,6%.
+
+### Triagem dos 72 sobreviventes
+
+| Categoria | Quantidade |
+|---|---|
+| Equivalente (sem efeito comportamental observável) | 38 |
+| Bug da ferramenta (falso sobrevivente, ver acima) | 12 |
+| Lacuna real, cobrível só com teste novo | 22 |
+| Lacuna real, exigiria mudança de produção | 0 |
+
+Nenhum sobrevivente indicou defeito em código de produção; todas as lacunas reais fecham só com teste novo, então o gate de aprovação do usuário antes de tocar `src/triagem/` (protocolo do I-007) não foi acionado.
+
+**`src/triagem/parsing.py`** (21 sobreviventes: 20 equivalente, 1 lacuna real, 0 bug de ferramenta):
+- Equivalentes: adicionar `'X'` a `_CONDITIONALLY_VISIBLE_CF` (nunca alcançável, o `and` já exige categoria Unicode `Cf`); trocar o separador de `_visible_content` (`"".join` → `"XXXX".join`, sem efeito quando comparado contra string de 1 caractere); `Counter.most_common(1)` → `most_common(2)` (o primeiro elemento retornado nunca muda); os 17 mutantes que decoram fragmentos de `PARSE_SYSTEM_PROMPT` com `"XX"` (nenhum teste compara o prompt inteiro por igualdade, só substrings no interior dos fragmentos mutados; mesmo achado F-01 já registrado, fora de escopo aqui).
+- Lacuna real: remover `"0"` de `_BARE_DIGIT_KEYS` sobrevive porque nenhum teste decora especificamente o dígito `"0"` (só `"1"` em `test_decorated_bare_digit_falls_through_instead_of_matching`, e `"-1"/"-2"/"-3"` em `test_out_of_scale_bare_number_is_none`, nunca `"-0"`). Vira **B-17**.
+
+**`src/triagem/safety.py`** (11 sobreviventes): todos bug de ferramenta, ver seção acima.
+
+**`src/triagem/tools.py`** (40 sobreviventes: 18 equivalente, 21 lacuna real, 1 bug de ferramenta):
+- Equivalente: mutações de mensagem de erro em `_read_pgsi_data`/`load_pgsi_questions`/`load_pgsi_scale`/`compute_pgsi_score`/`TriageOutcome` cujo teste só verifica o tipo da exceção ou um `match=` de substring que sobrevive ao redor de um wrap "XX"; `FileExistsError` em `write_triage_report` (só o tipo é checado); um `.replace(":", "")` redundante em `_sanitize_timestamp` (o regex seguinte já remove `:`); `indent=2` → `indent=3` em `model_dump_json` (o teste faz `json.loads`, indiferente à indentação).
+- Bug de ferramenta: ID 233 (ver seção acima).
+- Lacuna real (22 mutantes, mas convergem em 4 causas raiz, viram **B-18** a **B-21**):
+  - Separador `", "` em listas de chaves faltando/extras (`compute_pgsi_score`, `TriageOutcome._check_answers_complete`): nenhum teste hoje derruba 2+ chaves ao mesmo tempo, então o separador nunca é exercitado. **B-18**.
+  - `_sanitize_timestamp`: truncamento no limite de 32 caracteres e fallback `"sem-timestamp"` nunca são exercitados (ao contrário de `_sanitize_thread_id`, que já tem os dois casos cobertos). **B-19**.
+  - `_render_markdown`: o teste existente (`test_md_contains_answers_band_and_referrals`) só verifica substrings soltas; separadores de linha, os headings (`"# Relatório de triagem PGSI"`, `"## Respostas"`, `"## Encaminhamentos"`), as linhas `"Thread: ..."`/`"Data e hora: ..."` e os rótulos `"Pontuação: ..."`/`"Faixa: ..."` nunca são checados por conteúdo exato ou posição. **B-20**.
+  - `write_triage_report(outcome)` nunca é chamado sem `out_dir` explícito: o valor padrão `"reports"` está sem cobertura. **B-21**.
+
+### Novos itens de backlog (pós-v0.1, não bloqueiam esta sessão)
+
+| ID | Tarefa | Arquivo(s) | Mutante(s) de origem |
+|---|---|---|---|
+| B-17 | `parse_answer_deterministic` com "0" decorado (`"(0)"`, `"0)"`, `"0."`, `"0,"`, `"-0"`) deve cair no fallback (`None`), igual aos outros dígitos já cobertos | `tests/test_parsing.py` | 41 |
+| B-18 | Erro de `compute_pgsi_score`/`TriageOutcome` com 2+ chaves faltando/extras deve travar o separador `", "` exato entre as chaves | `tests/test_score.py`, `tests/test_tools.py` | 215, 219, 237, 241 |
+| B-19 | `_sanitize_timestamp`: truncamento no limite de 32 caracteres e fallback `"sem-timestamp"` para entrada sem caracteres seguros | `tests/test_report.py` | 254, 255 |
+| B-20 | `_render_markdown`: travar o conteúdo renderizado por igualdade completa ou linha a linha (headings, linhas de thread/timestamp, rótulos de pontuação/faixa), não só por substring solta | `tests/test_report.py` | 256, 257, 259, 260, 262-271 |
+| B-21 | `write_triage_report` chamado sem `out_dir` explícito deve gravar em `./reports` (valor padrão) | `tests/test_report.py` | 272 |
+
+Estes 5 itens ficam registrados como backlog pós-sessão, sem bloquear o fechamento do B-13 (a especificação do item pede a triagem e o registro, não a correção de cada lacuna encontrada).
