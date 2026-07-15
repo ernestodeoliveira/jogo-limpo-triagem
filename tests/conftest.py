@@ -23,7 +23,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # test_parsing.py later. derandomize=True makes the example sequence fixed
 # per run (no seed-dependent flakiness in CI or locally); max_examples=200
 # is generous for these cheap string properties without becoming slow.
-settings.register_profile("deterministic", derandomize=True, max_examples=200)
+# deadline=None disables hypothesis's per-example timing check: the suite's
+# zero-flakiness bar (docs/TEST_AUDIT_PLAN.md) should not depend on a
+# shared CI runner staying under hypothesis's default 200ms/example under
+# load, when correctness here has nothing to do with wall-clock time.
+settings.register_profile(
+    "deterministic", derandomize=True, max_examples=200, deadline=None
+)
 settings.load_profile("deterministic")
 
 
