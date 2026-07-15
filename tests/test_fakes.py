@@ -373,15 +373,25 @@ def test_llm_retries_exhausted_on_server_error():
     assert len(calls) == 1 + LLM_MAX_RETRIES
 
 
-def test_llm_timeout_maps_to_api_timeout_error():
+def test_llm_timeout_maps_to_api_timeout_error(monkeypatch):
     # Same isolation as above: a bare ChatOpenAI client, no
     # SelfConsistencyLLM wrapper. Here the transport raises httpx.ReadTimeout
     # on every call instead of returning a response, so this confirms the
     # SDK maps a transport-level timeout to openai.APITimeoutError and also
     # retries it up to LLM_MAX_RETRIES times (B-11, F-07).
+    #
+    # Unlike the 500 case above, a ReadTimeout carries no response headers,
+    # so the SDK's retry-after-ms shortcut does not apply here and it falls
+    # back to its real exponential backoff (time.sleep with jitter). Mock
+    # that sleep so this test stays fast and deterministic instead of
+    # actually waiting out the backoff on every run.
+    import time
+
     import httpx
     import openai
     from langchain_openai import ChatOpenAI
+
+    monkeypatch.setattr(time, "sleep", lambda *_: None)
 
     calls = []
 
