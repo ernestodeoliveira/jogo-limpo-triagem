@@ -1702,9 +1702,10 @@ produção ou de dependência.
   invocações do parser (9 sucessos + 18 falhas dentro dos lotes + 15 de 5 ciclos de retry)
   vezes 3 amostras, mais 1 chamada do classificador = 127 chamadas lógicas de LLM; teto de 381
   requests HTTP com os retries do SDK (`max_retries=2`), cada um limitado pelo timeout de 30s.
-  Duas correções factuais sobre premissas do próprio prompt, resolvidas a favor do código: o
-  classificador roda 1 vez por sessão (não por turno) e o N=3 vive em `fakes.py`
-  (`SELF_CONSISTENCY_SAMPLES`), não em `parsing.py`. Conclusão registrada: aceitabilidade
+  Dois esclarecimentos derivados do código: o classificador roda 1 vez por sessão (a premissa
+  de chamada única do prompt, confirmada e precisada) e o N=3 vive em `fakes.py`
+  (`SELF_CONSISTENCY_SAMPLES`); em `parsing.py` vive só a agregação `majority_vote`. Conclusão
+  registrada: aceitabilidade
   mantida (consumo finito por construção via `MAX_RETRY_CYCLES`, entrada capada em 300
   caracteres antes do LLM, timeout explícito, endpoint local); severidade segue Menor.
 - **Documento**: `docs/OWASP_LLM_AUDIT_PLAN.md` atualizado com appends datados "Rodada delta
