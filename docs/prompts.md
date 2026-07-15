@@ -1594,3 +1594,138 @@ sessão I-010 num parágrafo narrativo) corrigidos; security review não encontr
 opt-in `real_llm`, dos quais os 3 novos do B-12 foram executados contra o endpoint real com
 aprovação do usuário). Nenhuma mudança em código de produção (`src/triagem/`); única dependência
 nova é `hypothesis` (aprovada). **PR #26**.
+
+### I-012: Verificação delta OWASP pós-mudanças (Claude Code, 15/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário PGSI,
+construído com LangGraph. A auditoria OWASP Top 10 for LLM Applications 2025 foi planejada na
+sessão P-005 e implementada/verificada na I-006 (13/07): 10 categorias mapeadas em
+docs/OWASP_LLM_AUDIT_PLAN.md, backlog O-01 a O-08 resolvido ou aceito, pip-audit limpo (O-07)
+contra o lockfile daquela data.
+
+Desde então, três mudanças mergeadas alteraram partes da superfície auditada:
+1. PR #22 (sessão I-008, B-16 H-01 a H-05): self-consistency no fallback de parsing (N=3,
+   votação por maioria estrita, fail-closed) em src/triagem/fakes.py e src/triagem/parsing.py,
+   mais reforço do PARSE_SYSTEM_PROMPT com exemplos negativos. O PR #23 (I-009) registrou a
+   calibração H-06 contra o endpoint real: taxa de bypass por chamada de 6,7% para 1,7%
+   combinado, com risco residual medido e ACEITO pelo usuário em 14/07 (decisão fechada, não
+   reabrir).
+2. PR #24 (I-010): reescrita do guard determinístico de parse_answer_deterministic como
+   invariante estrutural sobre normalize(), fechando os bypasses por confusáveis Unicode
+   (F-20 a F-24), verificada por fuzz de ~3,3 milhões de combinações.
+3. PR #26 (I-011): backlog de testes B-09 a B-15; nenhuma mudança de produção, mas o uv.lock
+   mudou: hypothesis entrou como dependência dev com suas transitivas, o que invalida o
+   resultado do pip-audit registrado no O-07.
+
+Decisão do usuário em 15/07: NÃO repetir a auditoria completa. As categorias que mudaram
+(LLM01/LLM07) já foram revalidadas empiricamente com mais rigor que a auditoria original
+(calibração H-06 com 240 chamadas reais, corpus adversarial e fuzz do guard), e cada PR passou
+pelos gates obrigatórios de code review + security review. Esta sessão executa apenas uma
+VERIFICAÇÃO DELTA em três frentes: supply chain (LLM03), consumo (LLM10) e atualização do
+documento de auditoria.
+
+Requisitos inegociáveis: `uv run pytest` (sem marcador) e o CI continuam 100% verdes, offline e
+sem chave de API; nenhuma chamada ao endpoint LLM real é necessária nesta sessão; documentação
+em PT-BR, código e identificadores em inglês; não usar travessão longo em nenhum texto;
+Conventional Commits 1.0.0 em inglês. Antes de abrir o PR: code review e security review são
+obrigatórios mesmo em PR docs-only (instrução permanente do usuário); se qualquer uma encontrar
+um achado real (Important/Critical/High), corrigir e RODAR AS DUAS REVISÕES DE NOVO sobre o
+estado atualizado antes de prosseguir.
+
+# Papel
+Atue como engenheiro(a) de segurança sênior especialista no OWASP Top 10 for LLM Applications
+2025 e em agentes LangGraph, executando uma verificação delta pós-mudança, não uma nova
+auditoria. Não reabra achados resolvidos ou aceitos (em especial o risco residual do B-16 e as
+decisões da seção 5 do docs/OWASP_LLM_AUDIT_PLAN.md), a menos que uma verificação desta sessão
+os contradiga com evidência nova. O PR final deve ser docs-only; qualquer mudança de código de
+produção ou de dependência exige parar e decidir com o usuário antes.
+
+# Tarefa
+1. LLM03 (supply chain): re-rode o pip-audit contra o lockfile atual com o procedimento já
+   calibrado no projeto (o pip-audit não reconhece uv.lock diretamente): `uv export --locked
+   --no-hashes -o <arquivo temporário>` seguido de `pip-audit -r <arquivo> --no-deps
+   --disable-pip` (o --disable-pip evita o SIGABRT do ensurepip). Registre data, versão da
+   ferramenta e resultado. Se houver vulnerabilidade, classifique a severidade considerando que
+   hypothesis é dependência dev (não executa em produção) e pare para decisão do usuário antes
+   de qualquer upgrade.
+2. LLM10 (consumo): refaça a conta de pior caso de chamadas de LLM por sessão derivando TODOS
+   os números do código atual, não deste prompt: N do self-consistency, tentativas por
+   pergunta, MAX_RETRY_CYCLES, 9 perguntas, timeout/max_retries do cliente e a chamada única do
+   classificador de intenção. Compare com a análise registrada no documento (seção LLM10 e os
+   achados/itens O relacionados a cap de entrada, timeout/retries e ciclo de retry) e atualize
+   o documento com a conta nova, dizendo se a conclusão de aceitabilidade se mantém e por quê.
+3. Atualize docs/OWASP_LLM_AUDIT_PLAN.md nos pontos desatualizados, no mínimo: a mitigação
+   descrita para o A-06/LLM01 (hoje cita só delimitadores + instrução de null; acrescente
+   self-consistency N=3 fail-closed, o invariante estrutural do PR #24 e as taxas medidas na
+   H-06), o registro do O-07 (novo pip-audit, com data e resultado) e a seção LLM10 (conta
+   nova). Confirme que o N/A do LLM07 continua válido contra o PARSE_SYSTEM_PROMPT atual
+   (segue estático, público e sem segredo). Registre tudo como uma nota de rodada delta
+   datada, citando os PRs #22/#23/#24/#26, sem reescrever a história.
+4. Rode code review e security review sobre o diff completo antes do PR; corrija achados
+   Important+ e repita as duas até não haver mais achados relevantes.
+5. Abra o PR, confirme o CI verde, mescle (confirme com o usuário antes de mesclar você mesmo)
+   e remova o worktree/branch.
+6. Registre esta sessão em docs/prompts.md como I-012 (prompt e resultado), na seção
+   "2. Implementação", no padrão do arquivo.
+
+# Formato
+Trabalhe em worktree isolado (.worktrees/owasp-delta), seguindo o fluxo já estabelecido. PR
+único, docs-only esperado, com um commit por frente concluída (sugestões:
+`docs(security): record pip-audit rerun after lockfile change`,
+`docs(security): update llm10 worst-case math for self-consistency`,
+`docs(security): refresh a-06 mitigation record after parser hardening`).
+`uv run pytest` deve seguir 100% verde offline; rode `uvx ruff check` e
+`uvx ruff format --check` antes de cada commit. Ao final, imprima no chat: o resultado do
+pip-audit, a conta nova de pior caso do LLM10 com a conclusão, e as seções do documento que
+foram atualizadas.
+```
+
+**Resultado**: verificação delta executada nas três frentes, na branch `docs/owasp-delta`
+(worktree `.worktrees/owasp-delta`), PR docs-only com um commit por frente mais os commits de
+fechamento. Nenhum achado resolvido ou aceito foi reaberto; nenhuma mudança de código de
+produção ou de dependência.
+
+- **LLM03 / O-07**: `pip-audit` 2.10.1 re-executado em 15/07/2026 contra o `uv.lock` atual
+  (`uv export --locked --no-hashes`, 49 pacotes resolvidos, 48 pinados auditados): "No known
+  vulnerabilities found"; o único item pulado segue o pacote local `triagem` (editável).
+  Descoberta lateral: os "148 pacotes" do registro da I-006 eram a contagem de linhas do
+  arquivo exportado (com os comentários `# via`), não de pacotes; nota de comparabilidade
+  registrada no O-07 (o export atual tem 151 linhas para 48 pacotes pinados, consistente com
+  os 2 pacotes novos, hypothesis e sortedcontainers). Nenhuma vulnerabilidade, nenhuma decisão
+  de upgrade necessária.
+- **LLM10**: conta de pior caso derivada inteiramente do código atual: só existem 2 call sites
+  de LLM (classificador de intenção, 1 vez por sessão, sem votação; fallback de parsing com
+  N=3 amostras via `SelfConsistencyLLM`). Sessão que completa as 9 perguntas no pior caso: 42
+  invocações do parser (9 sucessos + 18 falhas dentro dos lotes + 15 de 5 ciclos de retry)
+  vezes 3 amostras, mais 1 chamada do classificador = 127 chamadas lógicas de LLM; teto de 381
+  requests HTTP com os retries do SDK (`max_retries=2`), cada um limitado pelo timeout de 30s.
+  Dois esclarecimentos derivados do código: o classificador roda 1 vez por sessão (a premissa
+  de chamada única do prompt, confirmada e precisada) e o N=3 vive em `fakes.py`
+  (`SELF_CONSISTENCY_SAMPLES`); em `parsing.py` vive só a agregação `majority_vote`. Conclusão
+  registrada: aceitabilidade
+  mantida (consumo finito por construção via `MAX_RETRY_CYCLES`, entrada capada em 300
+  caracteres antes do LLM, timeout explícito, endpoint local); severidade segue Menor.
+- **Documento**: `docs/OWASP_LLM_AUDIT_PLAN.md` atualizado com appends datados "Rodada delta
+  I-012 (15/07/2026)" em: A-06 (camada determinística do PR #24: invariante estrutural sobre
+  `normalize()`, F-20 a F-24, fuzz de ~3,3 milhões de combinações; risco residual aceito
+  permanece aceito), O-07 (novo pip-audit), seção LLM10 (conta nova; riscos (a)/(b)/(c)
+  registrados como resolvidos na I-006) e seção LLM07 (N/A revalidado: `PARSE_SYSTEM_PROMPT`
+  segue estático, público e sem segredo, hoje em `parsing.py:118`); mais a nova seção "6.
+  Rodadas de verificação delta" consolidando a rodada (estrutura decidida via AskUserQuestion:
+  inline + seção 6, preservando o histórico).
+
+Gates: code review (`superpowers:code-reviewer`) + security review (skill `security-review`)
+rodados sobre o diff completo. A primeira rodada devolveu 1 achado Important (o registro do
+LLM07 afirmava que todo texto de usuário chega envolto em `<answer>`, o que só vale para o
+caminho do parser; o classificador recebe o texto cru como mensagem `user`) e 4 Minors de
+precisão (nota datada no A-04 apontando o O-03, parêntese escopando o LLM09 na seção 6,
+"exatamente 3 amostras" em vez de "até 3", reformulação do parágrafo de esclarecimentos sobre o
+prompt), todos corrigidos num commit de ajustes; as duas revisões foram re-executadas sobre o
+estado atualizado e voltaram limpas (a de código verificou os 5 fixes item a item; a de
+segurança confirmou o diff docs-only e nenhum achado, com todas as afirmações de postura
+verificadas contra o código). `uv run pytest` verde antes de cada commit (378 testes offline,
+15 deselected no tier `real_llm`; nenhuma chamada ao endpoint real na sessão) e
+`uvx ruff check`/`uvx ruff format --check` limpos. **PR #27**.
