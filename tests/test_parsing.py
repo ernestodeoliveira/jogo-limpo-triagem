@@ -1,9 +1,13 @@
 """Tests for the deterministic answer parser (T-11) and its LLM fallback (T-12)."""
 
+import re
+
 import pytest
+from hypothesis import given, strategies as st
 
 from triagem.fakes import FakeLLM
 from triagem.parsing import (
+    ANSWER_TABLE,
     PARSE_SYSTEM_PROMPT,
     majority_vote,
     make_answer_parser,
@@ -324,3 +328,90 @@ def test_parse_system_prompt_includes_confirmed_bypass_examples():
         in PARSE_SYSTEM_PROMPT
     )
     assert "-1, bem abaixo de nunca" in PARSE_SYSTEM_PROMPT
+
+
+# --- Property-based tests (test audit B-15) ---------------------------------
+#
+# hypothesis explores the input space directly, including unrestricted
+# Unicode via st.text(), instead of relying only on the fixed example lists
+# above. This is a standing regression guard for the confusable-character
+# bug class that produced F-20 through F-24: any future change to normalize
+# or parse_answer_deterministic has to keep holding for inputs nobody
+# thought to hand-write. The deterministic profile (derandomize=True,
+# max_examples=200) is registered once in tests/conftest.py so every
+# @given test here (and any added later) runs the same fixed example
+# sequence on every machine and every run.
+
+
+@given(text=st.text())
+def test_normalize_is_idempotent(text):
+    assert normalize(normalize(text)) == normalize(text)
+
+
+@given(text=st.text())
+def test_normalize_output_is_well_formed(text):
+    result = normalize(text)
+    assert re.fullmatch(r"[a-z0-9 ]*", result)
+    assert "  " not in result
+    if result:
+        assert not result.startswith(" ")
+        assert not result.endswith(" ")
+
+
+@given(text=st.text())
+def test_normalize_and_parse_never_raise(text):
+    # No try/except: if either call ever raises, the exception propagates
+    # and hypothesis/pytest fail the test with the shrunk offending input.
+    normalize(text)
+    parse_answer_deterministic(text)
+
+
+def _apply_case_pattern(word: str, upper_flags: list[bool]) -> str:
+    """Uppercase each character of word where the matching flag is True.
+
+    Only changes casing, never content, so the result still normalizes
+    back to the original word.
+    """
+    return "".join(ch.upper() if flag else ch for ch, flag in zip(word, upper_flags))
+
+
+_BARE_DIGIT_ANSWER_KEYS = ("0", "1", "2", "3")
+_WORD_ANSWER_KEYS = tuple(k for k in ANSWER_TABLE if k not in _BARE_DIGIT_ANSWER_KEYS)
+
+# Bare digit keys ("0".."3") only tolerate whitespace padding: decorating
+# them with ANY visible punctuation deliberately falls through to the LLM
+# fallback instead of matching (see
+# test_decorated_bare_digit_falls_through_instead_of_matching above), so
+# this strategy must add nothing but whitespace around the digit.
+_bare_digit_decoration = st.tuples(
+    st.sampled_from(_BARE_DIGIT_ANSWER_KEYS),
+    st.text(alphabet=" \t", max_size=3),
+    st.text(alphabet=" \t", max_size=3),
+).map(lambda t: (t[1] + t[0] + t[2], ANSWER_TABLE[t[0]]))
+
+# Word keys survive arbitrary per-character case mixing plus a light
+# trailing punctuation/whitespace decoration, since normalize() lowercases
+# and strips punctuation for these unconditionally (see test_normalize
+# above, e.g. "Na Maioria Das Vezes." and "de vez em quando!").
+_word_key_decoration = (
+    st.sampled_from(_WORD_ANSWER_KEYS)
+    .flatmap(
+        lambda key: st.tuples(
+            st.just(key),
+            st.lists(st.booleans(), min_size=len(key), max_size=len(key)),
+            st.sampled_from(["", "!", ".", ",", "  ", " !", ".  ", "!!", ", "]),
+        )
+    )
+    .map(lambda t: (_apply_case_pattern(t[0], t[1]) + t[2], ANSWER_TABLE[t[0]]))
+)
+
+
+@given(decoration=st.one_of(_bare_digit_decoration, _word_key_decoration))
+def test_decorated_answer_table_key_still_parses_to_expected_value(decoration):
+    decorated_text, expected = decoration
+    assert parse_answer_deterministic(decorated_text) == expected
+
+
+@given(text=st.text())
+def test_parse_answer_deterministic_returns_valid_domain(text):
+    assert parse_answer_deterministic(text) in {0, 1, 2, 3, None}
