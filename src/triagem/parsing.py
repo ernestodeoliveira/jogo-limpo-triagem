@@ -48,15 +48,31 @@ def normalize(text: str) -> str:
 
 _BARE_DIGIT_KEYS = frozenset({"0", "1", "2", "3"})
 
+# Soft hyphen (U+00AD) is category Cf, but unlike the rest of that category
+# (zero-width space, word joiner, BOM...) it is not genuinely invisible: many
+# renderers (browsers, word processors, PDF text extraction) display it as a
+# hyphen-minus glyph when it falls at a line break, so a digit next to one
+# can visually read as a negative number even though it is "just formatting"
+# to _visible_content's filter (F-24 review finding). Treat it as visible
+# content instead of blanket-exempting every Cf character.
+_CONDITIONALLY_VISIBLE_CF = frozenset("\N{SOFT HYPHEN}")
+
+
+def _is_invisible(ch: str) -> bool:
+    """True for characters that are genuinely always invisible: ordinary
+    whitespace, or Unicode format characters (Cf) other than the
+    conditionally-visible exceptions above."""
+    if ch.isspace():
+        return True
+    return unicodedata.category(ch) == "Cf" and ch not in _CONDITIONALLY_VISIBLE_CF
+
 
 def _visible_content(text: str) -> str:
-    """Text with only whitespace and invisible/format characters (Unicode
-    category Cf: zero-width space, word joiner, BOM...) removed; every
-    other character, including any dash/minus/symbol/combining mark, is
-    kept exactly as-is for comparison against normalize()'s output."""
-    return "".join(
-        ch for ch in text if not ch.isspace() and unicodedata.category(ch) != "Cf"
-    )
+    """Text with only genuinely invisible characters removed (see
+    _is_invisible); every other character, including any dash/minus/
+    symbol/combining mark, is kept exactly as-is for comparison against
+    normalize()'s output."""
+    return "".join(ch for ch in text if not _is_invisible(ch))
 
 
 def parse_answer_deterministic(text: str) -> int | None:
@@ -72,7 +88,7 @@ def parse_answer_deterministic(text: str) -> int | None:
     and emoji dashes, ordinary punctuation, combining marks, invisible
     joiners wedged between the sign and the digit...), because normalize()
     folds away far more than any fixed list of "minus-like" characters can
-    enumerate (B-16/F-20/F-21/F-22 review findings). This check instead
+    enumerate (B-16/F-20/F-21/F-22/F-23/F-24 review findings). This check instead
     asks the only question that matters: did normalize() have to fold away
     ANYTHING besides whitespace/invisible characters to reach this digit?
     If so, the input wasn't unambiguously that digit, so it must not be

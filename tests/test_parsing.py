@@ -134,6 +134,14 @@ def test_ambiguous_or_off_table_is_none(text):
         "﹉1",  # dashed overline
         "-͏1",  # combining grapheme joiner (U+034F) after the ASCII hyphen
         "-️1",  # variation selector-16 (U+FE0F) after the ASCII hyphen
+        # Soft hyphen (U+00AD) is category Cf like the genuinely invisible
+        # characters above, but it is NOT always invisible: many renderers
+        # display it as a hyphen-minus glyph at a line break (F-24, security
+        # review finding on the third structural rewrite).
+        "\xad1",
+        "1\xad",
+        "\xad1\xad",
+        "\xad\xad1",
     ],
 )
 def test_out_of_scale_bare_number_is_none(text):
