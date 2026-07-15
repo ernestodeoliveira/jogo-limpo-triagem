@@ -140,6 +140,16 @@ Protótipo educacional local (CLI single-user, LangGraph, congelamento v0.1 em 1
 
 **Severidade**: Menor (todos). **Esforço**: baixo.
 
+**Rodada delta I-012 (15/07/2026)**: conta de pior caso refeita a partir do código vigente, após o multiplicador de self-consistency N=3 introduzido no B-16 (PRs #22/#23). Os riscos (a), (b) e (c) acima foram resolvidos na sessão I-006 e permanecem resolvidos: (a) cap de 300 caracteres com rejeição antes do fallback (`MAX_ANSWER_LENGTH`, `src/triagem/nodes.py:26,175-179`, custo zero de chamada); (b) `timeout=30s` e `max_retries=2` explícitos no `ChatOpenAI` (`src/triagem/fakes.py:20-21,248-249`); (c) laço de retry limitado por `MAX_RETRY_CYCLES = 5` global e monotônico por sessão (`src/triagem/nodes.py:27,199-203`, achado A-08).
+
+Componentes da conta, todos derivados do código atual:
+- Apenas 2 call sites de LLM no repositório: o classificador de intenção, 1 chamada por sessão, sem votação (`src/triagem/classify.py:37`, pass-through em `src/triagem/fakes.py:206-207`), e o fallback de parsing (`src/triagem/parsing.py:152`), que via `SelfConsistencyLLM` dispara N=3 amostras por invocação (`SELF_CONSISTENCY_SAMPLES`, `src/triagem/fakes.py:22,175`). Todos os demais nós do grafo são determinísticos.
+- `MAX_ATTEMPTS = 3` tentativas por pergunta, 9 perguntas, até 5 ciclos de retry aceitos por sessão (o sexto lote de 3 falhas encerra por `abort_node`).
+
+Pior caso de uma sessão que completa as 9 perguntas, assumindo toda resposta fora da tabela determinística: 9 sucessos + 9 × 2 falhas dentro dos lotes + 5 × 3 falhas de lotes que disparam retry = 42 invocações do parser, cada uma custando até 3 amostras, mais 1 chamada do classificador: 1 + 3 × 42 = **127 chamadas lógicas de LLM por sessão**. Com os retries do SDK (`max_retries=2` multiplica requests HTTP em falha transitória, não chamadas lógicas), o teto é 127 × 3 = **381 requests HTTP**, cada um limitado pelo timeout de 30 segundos. Caminho de abort precoce (tudo falha desde a primeira pergunta): 55 chamadas lógicas. Caminho feliz com respostas da tabela: 1 chamada na sessão inteira.
+
+Comparação com a análise original: a I-006 tratava a sessão como finita, mas sem conta fechada, e o N=3 do B-16 triplicou o custo máximo de cada fallback. Conclusão: a aceitabilidade se mantém e a severidade segue Menor. O total é finito e limitado por construção (`MAX_RETRY_CYCLES`), a entrada é capada em 300 caracteres antes de alcançar o LLM, cada request tem timeout explícito e o endpoint é local; 127 chamadas lógicas no pior caso não configuram consumo não limitado. Nenhum achado novo.
+
 ## 3. Achados priorizados
 
 Nenhum achado Crítico: consequência esperada dos gates de revisão por PR das sessões I-001 a I-005. Achados já resolvidos e não reabertos, com a sessão que os tratou: tetos de versão e hashes de dependências (I-001), path traversal e escrita atômica do relatório (I-004/PR #8), CI com menor privilégio e pins por SHA (I-005/PR #11), precedência de crise verificada nos 3 pontos do fluxo (I-003/PR #7).
