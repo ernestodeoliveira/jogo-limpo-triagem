@@ -5,9 +5,12 @@ TRIAGE_LLM_BASE_URL/TRIAGE_LLM_MODEL are unset or the endpoint is
 unreachable (see the real_llm_config fixture in tests/conftest.py).
 """
 
+import socket
+import time
 from pathlib import Path
 from uuid import uuid4
 
+import openai
 import pytest
 from langgraph.types import Command
 
@@ -140,3 +143,104 @@ def test_real_classifier_adversarial(real_llm, text, expected_destinations):
     result = classifier.invoke([("system", CLASSIFY_SYSTEM_PROMPT), ("user", text)])
     destination = route_intent({**initial_state(text), "intent": result.intent})
     assert destination in expected_destinations
+
+
+def test_real_llm_stress_sequential_sessions(real_llm):
+    """Three consecutive end-to-end sessions against the real model, each on
+    its own thread_id, sharing one compiled app (F-19, F-07). Proves no
+    cross-thread leakage: every report_path is a distinct file and every
+    session ends up with exactly its own 9 answers, none inherited from a
+    previous session's checkpoint.
+    """
+    app = build_agent(real_llm)
+    # Same mixed digit/off-table replies as test_real_llm_smoke_full_triage,
+    # reused verbatim across the 3 sessions: the point of this test is
+    # session isolation, not reply variety.
+    replies = [
+        ("0", "0"),
+        ("de vez em quando", "1"),
+        ("2", "2"),
+        ("sempre, todas as vezes", "3"),
+        ("nunca fiz isso", "0"),
+        ("1", "1"),
+        ("na maior parte das vezes", "2"),
+        ("3", "3"),
+        ("raramente, so umas duas vezes", "1"),
+    ]
+
+    sessions = []
+    for _ in range(3):
+        config = {"configurable": {"thread_id": uuid4().hex}}
+        result = app.invoke(initial_state("quero começar o teste"), config)
+        for reply, fallback_digit in replies:
+            payload = read_interrupt_payload(result)
+            assert payload is not None
+            result = _advance(app, config, result, reply, fallback_digit)
+        assert read_interrupt_payload(result) is None
+        assert isinstance(result["score"], int) and 0 <= result["score"] <= 27
+        assert result["severity_band"] in {"sem_risco", "baixo", "moderado", "alto"}
+        assert result["report_path"] is not None
+        assert Path(result["report_path"]).is_file()
+        sessions.append(result)
+
+    report_paths = [session["report_path"] for session in sessions]
+    assert len(set(report_paths)) == 3
+    for session in sessions:
+        assert len(session["answers"]) == 9
+
+
+def test_real_llm_max_length_answers_hit_fallback(real_llm):
+    """An answer of exactly 300 chars (MAX_ANSWER_LENGTH, src/triagem/nodes.py)
+    clears the length-rejection gate, which only rejects strictly more than
+    300 chars, so it reaches the deterministic parser. This free-text filler
+    matches no ANSWER_TABLE key, so it falls through to the real LLM
+    fallback (F-19). Tolerant of the real model's non-determinism: it may
+    resolve the filler to a valid 0-3 value (session advances to q2) or
+    return null (q1 repeats with one more attempt); either outcome is a
+    pass, as long as the session neither hangs nor raises.
+    """
+    filler = "nao sei bem como responder isso mas vou tentar explicar do jeito que der "
+    long_answer = (filler * ((300 // len(filler)) + 1))[:300]
+    assert len(long_answer) == 300
+
+    app = build_agent(real_llm)
+    config = {"configurable": {"thread_id": uuid4().hex}}
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["question_id"] == "q1"
+
+    result = app.invoke(Command(resume=long_answer), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None
+    assert payload["question_id"] in {"q1", "q2"}
+    if payload["question_id"] == "q1":
+        assert result["attempts"] == 1
+
+
+def test_real_llm_timeout_against_dead_port(monkeypatch):
+    """Connection-refused path against a guaranteed-closed local port (F-19,
+    F-07). Deliberately bypasses the real_llm/real_llm_config fixtures
+    (which would skip when no real endpoint is configured or reachable):
+    this test's whole point is exercising the no-endpoint-available case, so
+    it must run and pass with no .env and no real LLM present.
+
+    The port is picked dynamically (bind to port 0, read it back, close the
+    socket) instead of a hardcoded number, so nothing can be listening on it
+    at the moment get_llm() tries to connect.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        dead_port = probe.getsockname()[1]
+
+    monkeypatch.setenv("TRIAGE_LLM_BASE_URL", f"http://127.0.0.1:{dead_port}/v1")
+    monkeypatch.setenv("TRIAGE_LLM_MODEL", "test-model")
+    monkeypatch.delenv("TRIAGE_FAKE_LLM", raising=False)
+
+    dead_llm = get_llm()
+
+    start = time.monotonic()
+    with pytest.raises(openai.APIConnectionError):
+        dead_llm.llm.invoke("oi")
+    elapsed = time.monotonic() - start
+    assert elapsed < 15
