@@ -81,16 +81,118 @@ def test_ambiguous_or_off_table_is_none(text):
 @pytest.mark.parametrize(
     "text",
     [
+        # Plain ASCII and the originally confirmed Unicode dash/minus
+        # variants (F-20).
         "-1",
         "-2",
         "-3",
+        "- 1",
+        "‐1",  # hyphen
+        "–1",  # en dash
+        "—2",  # em dash
+        "−2",  # minus sign
+        "– 2",  # en dash + space
+        "﹣3",  # small hyphen-minus
+        "－3",  # fullwidth hyphen-minus
+        "⁻1",  # superscript minus
+        "₋1",  # subscript minus
+        "˗1",  # modifier letter minus sign
+        "⁃1",  # hyphen bullet
+        "⸺1",  # two-em dash
+        "⸻2",  # three-em dash
+        "֊2",  # armenian hyphen
+        "〜3",  # wave dash
+        # Invisible/format characters (Unicode category Cf) hiding the sign
+        # from a naive raw-string prefix check (F-21).
+        "​-1",  # zero-width space before the ASCII hyphen
+        "⁠-2",  # word joiner before the ASCII hyphen
+        "﻿-3",  # BOM before the ASCII hyphen
+        # Ordinary punctuation, a control character, or a combining mark
+        # between the sign and the digit defeated an adjacency check that
+        # only tolerated whitespace/Cf characters there (F-22, code review
+        # finding on the first structural rewrite).
+        "-!1",
+        "-.1",
+        "-_1",
+        "-*1",
+        "-\x001",
+        "!-1",
+        " !-1",
+        "!.-1",
+        "-́1",  # combining acute accent between the dash and the digit
+        "́-1",  # combining acute accent before the dash
+        "\x00-1",
+        # Symbol/letter-category "minus" confusables outside any fixed
+        # dash-category enumeration, and a combining grapheme joiner/
+        # variation selector wedged after a recognized dash (F-23, security
+        # review finding on the second structural rewrite: no fixed
+        # "minus-like" character list, however broad, is exhaustive).
+        "⁒1",  # commercial minus sign
+        "➖1",  # heavy minus sign (emoji)
+        "ー1",  # katakana-hiragana prolonged sound mark
+        "─1",  # box drawings light horizontal
+        "﹉1",  # dashed overline
+        "-͏1",  # combining grapheme joiner (U+034F) after the ASCII hyphen
+        "-️1",  # variation selector-16 (U+FE0F) after the ASCII hyphen
+        # Soft hyphen (U+00AD) is category Cf like the genuinely invisible
+        # characters above, but it is NOT always invisible: many renderers
+        # display it as a hyphen-minus glyph at a line break (F-24, security
+        # review finding on the third structural rewrite).
+        "\xad1",
+        "1\xad",
+        "\xad1\xad",
+        "\xad\xad1",
     ],
 )
 def test_out_of_scale_bare_number_is_none(text):
-    # normalize() must not strip the leading '-': stripping it collapsed
-    # "-1"/"-2"/"-3" onto the valid table keys "1"/"2"/"3", accepting an
-    # out-of-scale answer as valid before it ever reached the LLM fallback
-    # or the self-consistency defense (B-16 review finding).
+    # normalize() folds away punctuation, symbols, combining marks and
+    # invisible characters alike, so any of them next to a digit can make
+    # out-of-scale or adversarial input collapse onto a valid table key
+    # exactly like plain "-1" does, skipping the LLM fallback and the
+    # self-consistency defense entirely (B-16/F-18). Three attempts at
+    # denylisting "characters that look like a minus sign" each missed a
+    # further class (a fixed ASCII check, then an enumerated Unicode dash
+    # list, then a Unicode-category check), so the guard now asks a
+    # different question: did normalize() have to fold away ANY visible
+    # content besides whitespace/invisible characters to reach this bare
+    # digit? If so, reject regardless of what that content was.
+    assert parse_answer_deterministic(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("​1", 1),  # invisible char with nothing else to hide: still a plain digit
+        ("​-nunca", 0),  # invisible char before a WORD answer, no digit follows
+    ],
+)
+def test_invisible_characters_alone_do_not_affect_parsing(text, expected):
+    # Whitespace and invisible (Cf) characters are the only things the
+    # guard treats as harmless padding around an otherwise-bare digit or an
+    # ordinary word-based answer; this is unaffected by the F-20/F-21/F-22/
+    # F-23 hardening.
+    assert parse_answer_deterministic(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "(1)",
+        "1)",
+        "1.",
+        "1,",
+    ],
+)
+def test_decorated_bare_digit_falls_through_instead_of_matching(text):
+    # Deliberate tightening (F-23 review): the deterministic fast path now
+    # only matches a bare digit when the visible input IS exactly that
+    # digit; any other visible character around it (even harmless-looking
+    # punctuation with no "minus" reading at all) means normalize() folded
+    # away something, so it falls through to the LLM fallback instead of
+    # being silently accepted. This trades a same-answer round trip through
+    # the LLM for these rare decorated formats (previously matched directly
+    # by the table) for closing the confusable-minus-sign bypass class
+    # completely instead of chasing another enumeration gap.
     assert parse_answer_deterministic(text) is None
 
 
