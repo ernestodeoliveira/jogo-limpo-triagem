@@ -10,11 +10,27 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 import pytest
+from hypothesis import settings
 
 from triagem.fakes import get_llm
 from triagem.graph import build_agent
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Registered here (not in a specific test module) because conftest.py is
+# guaranteed to run before any test module is collected, and this keeps a
+# single source of truth if property-based tests spread beyond
+# test_parsing.py later. derandomize=True makes the example sequence fixed
+# per run (no seed-dependent flakiness in CI or locally); max_examples=200
+# is generous for these cheap string properties without becoming slow.
+# deadline=None disables hypothesis's per-example timing check: the suite's
+# zero-flakiness bar (docs/TEST_AUDIT_PLAN.md) should not depend on a
+# shared CI runner staying under hypothesis's default 200ms/example under
+# load, when correctness here has nothing to do with wall-clock time.
+settings.register_profile(
+    "deterministic", derandomize=True, max_examples=200, deadline=None
+)
+settings.load_profile("deterministic")
 
 
 def _load_dotenv_minimal(path: Path) -> None:

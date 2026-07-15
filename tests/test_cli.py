@@ -3,6 +3,7 @@
 import os
 
 from triagem.cli import main, render_offer, render_payload, render_question
+from triagem.graph import build_agent
 
 HAPPY_REPLIES = ["0", "1", "2", "3", "0", "1", "2", "3", "3"]  # PGSI score 15
 
@@ -93,6 +94,42 @@ def test_main_eof_exits_cleanly(monkeypatch, capsys):
     assert GOODBYE in captured.out
 
 
+def test_main_keyboard_interrupt_prints_goodbye(monkeypatch, capsys):
+    def raise_keyboard_interrupt(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", raise_keyboard_interrupt)
+
+    exit_code = main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    from triagem.cli import GOODBYE
+
+    assert GOODBYE in captured.out
+
+
+def test_main_config_error_returns_2(monkeypatch, capsys):
+    """When TRIAGE_FAKE_LLM is unset and the real-LLM endpoint envs are
+    absent, get_llm() raises RuntimeError before build_agent() finishes;
+    main() must report a config error and exit 2 without any network call.
+    """
+    monkeypatch.delenv("TRIAGE_FAKE_LLM", raising=False)
+    monkeypatch.delenv("TRIAGE_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("TRIAGE_LLM_MODEL", raising=False)
+    # Neutralize load_dotenv_if_available(): if python-dotenv were ever
+    # installed and a .env with the endpoint envs existed in the cwd,
+    # load_dotenv(override=False) would repopulate the vars deleted above
+    # and this test would stop exercising the RuntimeError branch at all.
+    monkeypatch.setattr("triagem.cli.load_dotenv_if_available", lambda: None)
+
+    exit_code = main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "Erro de configuração" in captured.out
+
+
 def test_main_unexpected_exception_is_caught_gracefully(monkeypatch, capsys):
     """A raw runtime failure inside app.invoke() (e.g. PermissionError from
     report_node when TRIAGE_REPORTS_DIR is not writable) must not leak a
@@ -104,6 +141,38 @@ def test_main_unexpected_exception_is_caught_gracefully(monkeypatch, capsys):
             raise PermissionError("disk full")
 
     monkeypatch.setattr("triagem.cli.build_agent", lambda: ExplodingApp())
+    monkeypatch.setattr("builtins.input", lambda *a: "quero começar o teste")
+
+    exit_code = main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Erro inesperado" in captured.out
+
+
+class ExplodingClassifierLLM:
+    """Local double whose with_structured_output always returns a runnable
+    that raises on invoke, regardless of schema. It stands in for a chat
+    model whose first structured call (classify_intent_node, F-10) fails at
+    runtime, after the graph has already been built successfully.
+    """
+
+    def with_structured_output(self, schema):
+        class _Runnable:
+            def invoke(self, messages):
+                raise ValueError("classifier exploded")
+
+        return _Runnable()
+
+
+def test_main_classifier_error_reaches_generic_handler(monkeypatch, capsys):
+    """An exception raised inside classify_intent_node (no try/except of its
+    own) must propagate up to main()'s generic Exception handler (exit 1),
+    the same way any other unguarded node failure would (F-10).
+    """
+    monkeypatch.setattr(
+        "triagem.cli.build_agent", lambda: build_agent(ExplodingClassifierLLM())
+    )
     monkeypatch.setattr("builtins.input", lambda *a: "quero começar o teste")
 
     exit_code = main()

@@ -1465,3 +1465,132 @@ Todos os 10 casos de bypass observados (tanto antes quanto depois) devolveram o 
 **Decisão do usuário (via AskUserQuestion, mesma sessão)**: aceitar o risco residual medido e documentar B-16 como mitigado (não fechado), em vez de aumentar N (de 3 para 5) e remedir. **H-07 executado na sequência**: `docs/TEST_AUDIT_PLAN.md` (achado F-18 e item B-16) e `docs/OWASP_LLM_AUDIT_PLAN.md` (achado A-06) atualizados com as taxas medidas e o estado real (mitigado com risco residual aceito, não "fechado" a zero).
 
 Nenhuma mudança de código nesta sessão (só medição e registro). Script de calibração ad hoc mantido fora do repositório (scratchpad da sessão), conforme o padrão já estabelecido de não versionar ferramentas de medição pontual contra o endpoint real.
+
+### I-011: Implementação do backlog de testes B-09 a B-15 (Claude Code, 15/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário PGSI,
+construído com LangGraph. O backlog de testes B-01 a B-08 foi implementado na sessão I-007 (PR
+#20). O backlog B-16 (hardening do parser contra bypass intermitente de injeção) foi completado
+nas sessões I-008/I-009 (PRs #22/#23), com risco residual medido e aceito. Uma sessão de
+planejamento (P-008, PR #25) refinou a especificação de B-09 a B-15 e definiu a ordem de
+execução; durante essa mesma sessão, um achado de segurança não relacionado (F-20 a F-24, bypass
+de confusáveis Unicode no guard `"-1"` do parser de resposta) foi encontrado e corrigido à parte
+(I-010, PR #24). O estado atual do main: 364 testes offline sempre verdes (mais 10 no tier
+opt-in `real_llm`), `docs/TEST_AUDIT_PLAN.md` seção 4 com a especificação definitiva de B-09 a
+B-15 (não redecida aqui, só implementada) e seção 5 com as perguntas 8 a 11 já decididas.
+
+Esta sessão implementa o backlog completo B-09 a B-15, na ordem já definida na sessão P-008:
+**B-09, B-10, B-14, B-11, B-15, B-13, B-12**. Resumo de cada item (a especificação completa e
+autoritativa está em `docs/TEST_AUDIT_PLAN.md`, seção 4; leia-a antes de implementar, não
+rederive os testes a partir deste resumo): corrupção do pgsi.json no meio da sessão + limite de
+compartilhamento de estado do InMemorySaver (B-09); resume em thread finalizado/desconhecido
+contra o langgraph 1.2.9 pinado (B-10); ramos menores do CLI: KeyboardInterrupt, RuntimeError de
+configuração, exceção do classificador propagando (B-14); timeout/max_retries do ChatOpenAI sob
+falha HTTP simulada offline via httpx.MockTransport (B-11); property-based testing com hypothesis
+sobre normalize()/parse_answer_deterministic (B-15, dependência dev nova aprovada nesta rodada);
+piloto de mutation testing com mutmut sobre parsing.py/safety.py/tools.py completos, ad hoc via
+uvx, com triagem de cada sobrevivente e Anexo B versionado (B-13); stress contra o LLM real local
+(3 sessões consecutivas, borda de 300 caracteres, timeout de porta fechada), exigindo aprovação
+explícita do usuário antes de chamar o endpoint ativo (B-12).
+
+Requisitos inegociáveis: `uv run pytest` (sem marcador) e o CI continuam 100% verdes, offline e
+sem chave de API; a suíte atual (364 testes) não pode regredir; documentação em PT-BR, código e
+identificadores em inglês; não usar travessão longo em nenhum texto; Conventional Commits 1.0.0
+em inglês; um commit por item do backlog. Antes de abrir o PR: code review e security review são
+obrigatórios (instrução permanente do usuário); se qualquer uma encontrar um achado real
+(Important/Critical/High), corrigir e RODAR AS DUAS REVISÕES DE NOVO sobre o estado atualizado
+antes de prosseguir, não só uma vez.
+
+# Papel
+Atue como engenheiro de software sênior especialista em LangGraph, pytest e hardening de agentes
+de IA, executando o backlog já definido e especificado em `docs/TEST_AUDIT_PLAN.md`. Nesta sessão
+você implementa APENAS B-09 a B-15, na ordem dada. Não reabra o B-16 nem toque no achado F-15.
+Use o padrão subagent-driven-development: um subagente implementador por item do backlog, seguido
+de revisão de conformidade com a especificação e revisão de qualidade de código, com loop de
+correção antes de dar cada item como concluído. Revisão holística + code review + security review
+do PR inteiro ao final, antes do merge.
+
+# Tarefa
+1. Leia `docs/TEST_AUDIT_PLAN.md` seção 4 e seção 5 como fonte de verdade; não redecida o que já
+   foi decidido lá. Leia o código de produção e teste citados em cada item para confirmar que
+   linha/função ainda batem com o código atual antes de implementar.
+2. Crie um worktree isolado (`.worktrees/test-audit-b09-b15`), seguindo o fluxo já estabelecido.
+3. Implemente os 7 itens NA ORDEM dada, item por item, com subagent-driven-development.
+4. B-13 e B-12 têm protocolos próprios de pausa: perguntar antes de mudar código de produção por
+   causa de um achado de mutation testing; pedir aprovação explícita antes de chamar o endpoint
+   real.
+5. Ao final dos 7 itens, atualize `docs/TEST_AUDIT_PLAN.md`: marque a seção 4 como "Implementado
+   (sessão I-011)" e adicione o Anexo B com o resultado do piloto de mutation testing.
+6. Rode a revisão holística do PR inteiro, depois code review e security review sobre o diff
+   completo. Corrija qualquer achado Important/Critical/High e rode as duas revisões de novo até
+   não haver mais achados relevantes, antes de abrir o PR.
+7. Abra o PR, confirme CI verde, mescle (confirme com o usuário se é para mesclar você mesmo) e
+   remova o worktree/branch.
+8. Registre esta sessão em `docs/prompts.md` como I-011.
+
+# Formato
+Um PR único bundlando os 7 commits, mais os commits de fechamento. `uv run pytest` deve seguir
+100% verde offline a cada commit. Rode `uvx ruff check`/`uvx ruff format --check` antes de cada
+commit.
+```
+
+**Resultado**: os 7 itens implementados na ordem definida (B-09, B-10, B-14, B-11, B-15, B-13,
+B-12), na branch `test/audit-b09-b15` (worktree `.worktrees/test-audit-b09-b15`), com subagent-driven
+development: um subagente implementador por item, seguido de revisão de conformidade com a spec
+e revisão de qualidade de código (`superpowers:code-reviewer`), com correção e re-revisão sempre
+que um achado surgia (a maioria Minor, mecânicos: idioma de comentário, precisão de comentário
+sobre versão de biblioteca, `import` não usado, mock de `time.sleep`, `deadline` do hypothesis,
+deduplicação de lista de teste).
+
+- **B-09**: `test_pgsi_corruption_mid_session_raises_pgsi_error` (copia o `data/pgsi.json` real
+  para `tmp_path/data/`, `monkeypatch.chdir`, corrompe entre dois resumes, espera `PGSIDataError`
+  sem monkeypatch de loader) + `test_fresh_agent_instance_does_not_share_state` (dois
+  `build_agent()` com o mesmo `thread_id` não compartilham checkpoint, provado via `get_state()`
+  vazio e o reducer de `answers`).
+- **B-10**: `test_resume_on_finished_thread_is_noop` (resume adicional num thread já concluído não
+  grava relatório novo) + `test_resume_on_unknown_thread_raises_keyerror` (`KeyError('user_input')`
+  contra langgraph 1.2.9 pinado, checkpoint parcial `next == ("safety_gate",)`).
+- **B-14**: `test_main_keyboard_interrupt_prints_goodbye`, `test_main_config_error_returns_2`
+  (endurecido contra vazamento de `.env`/`python-dotenv` real), `test_main_classifier_error_reaches_generic_handler`
+  (double cujo `with_structured_output` só levanta exceção no `invoke`, não no build do grafo).
+- **B-11**: `test_llm_retries_exhausted_on_server_error` + `test_llm_timeout_maps_to_api_timeout_error`,
+  `ChatOpenAI` real com `http_client=httpx.MockTransport(...)`, isolado do `SelfConsistencyLLM`;
+  `time.sleep` mockado no segundo para manter o teste rápido e determinístico.
+- **B-15**: `hypothesis` adicionado como dependência dev (`uv add --dev hypothesis`), perfil
+  determinístico (`derandomize=True, max_examples=200, deadline=None`) registrado em
+  `tests/conftest.py`; 5 propriedades `@given` sobre `normalize()`/`parse_answer_deterministic`,
+  com estratégias distintas para chaves de dígito nu (só espaço) e chaves de palavra (caixa +
+  pontuação leve), respeitando o guard de segurança do PR #24.
+- **B-13**: piloto de `mutmut` 2.5.1 (ad hoc via `uvx --python 3.11 --from 'mutmut<3' mutmut`,
+  necessário fixar Python 3.11 por um bug de compatibilidade do `pony-orm` com Python 3.13) sobre
+  os 3 arquivos completos: 294 mutantes, 222 mortos (75,5%), 72 sobreviventes. Achado de
+  ferramenta descoberto e verificado empiricamente: os 11 sobreviventes de `safety.py` (e 1 de
+  `tools.py`) são falsos sobreviventes, porque uma mutação que quebra a importação do módulo faz o
+  pytest sair com código 4 (erro de coleção), e a lógica interna do mutmut (`returncode != 1`)
+  trata qualquer código diferente de 1 como "testes passaram". Triagem completa dos 72
+  sobreviventes registrada no Anexo B de `docs/TEST_AUDIT_PLAN.md`: 38 equivalentes, 12 bug de
+  ferramenta, 22 lacunas reais (nenhuma exigindo mudança de produção; viram backlog B-17 a B-21).
+- **B-12**: aprovação explícita concedida via AskUserQuestion nesta sessão para chamar o endpoint
+  real (oMLX + Qwen3.6-35B-A3B-4bit, `localhost:8000`). `test_real_llm_stress_sequential_sessions`
+  (3 sessões consecutivas, thread_ids distintos, sem vazamento), `test_real_llm_max_length_answers_hit_fallback`
+  (resposta de exatamente 300 caracteres, borda de `MAX_ANSWER_LENGTH`), `test_real_llm_timeout_against_dead_port`
+  (porta TCP livre escolhida dinamicamente e fechada antes do teste, sem depender do endpoint
+  vivo). Rodado contra o endpoint real: os 2 testes que exigem o modelo passaram em ~29,5s; o
+  teste de porta fechada em ~1,8s. Um teste pré-existente do arquivo (`test_real_fallback_rescues_legitimate_off_table`)
+  falhou uma vez por não-determinismo do modelo real e passou ao rodar isolado em seguida,
+  comportamento já documentado no próprio arquivo (achado F-18/B-16), não uma regressão desta
+  sessão.
+
+Fechamento de docs: `docs/TEST_AUDIT_PLAN.md` seção 4 marcada como implementada (sessão I-011)
+para os 7 itens; Anexo B com os números completos do piloto de mutation testing e o backlog novo
+B-17 a B-21. Revisão holística do PR inteiro + code review (`superpowers:code-reviewer`) +
+security review (skill `security-review`) rodados sobre o diff completo (15 commits); achados
+(todos Minor, de documentação: um erro de soma no Anexo B, uma referência residual ao ID de
+sessão I-010 num parágrafo narrativo) corrigidos; security review não encontrou nenhum achado.
+`uv run pytest` verde ao longo de toda a sessão: 364 → 378 testes offline (mais 12 → 15 no tier
+opt-in `real_llm`, dos quais os 3 novos do B-12 foram executados contra o endpoint real com
+aprovação do usuário). Nenhuma mudança em código de produção (`src/triagem/`); única dependência
+nova é `hypothesis` (aprovada). **PR #26**.
