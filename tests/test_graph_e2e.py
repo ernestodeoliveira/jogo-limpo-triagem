@@ -6,6 +6,7 @@ canonical read_interrupt_payload helper (risk R-03).
 """
 
 import json
+import shutil
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,7 +25,12 @@ from triagem.nodes import (
     route_after_validation,
 )
 from triagem.state import initial_state
-from triagem.tools import DISCLAIMER, load_pgsi_questions, load_pgsi_scale
+from triagem.tools import (
+    DISCLAIMER,
+    PGSIDataError,
+    load_pgsi_questions,
+    load_pgsi_scale,
+)
 
 HAPPY_REPLIES = ["0", "1", "2", "3", "0", "1", "2", "3", "3"]  # PGSI score 15
 
@@ -577,3 +583,88 @@ def test_single_code_point_emoji_at_length_limit_reaches_parser():
     app.invoke(Command(resume=emoji_answer), config)
 
     assert llm.schema_calls.count("AnswerValue") == 1
+
+
+def test_pgsi_corruption_mid_session_raises_pgsi_error(
+    app, config, tmp_path, monkeypatch
+):
+    """Corrupção do pgsi.json a meio da sessão deve estourar PGSIDataError.
+
+    ask_question é idempotente por design (D-09/R-02): a cada resume ele
+    reexecuta do início e relê data/pgsi.json do zero (load_pgsi_questions
+    e load_pgsi_scale são chamados sem argumento, path relativo ao cwd do
+    processo, não ao arquivo de nodes.py). Este teste copia o pgsi.json real
+    do repositório para tmp_path/data/, aponta o cwd do processo para lá via
+    chdir, avança a sessão até o arquivo ainda estar íntegro, corrompe o
+    arquivo e só então resume de novo: a releitura no resume seguinte deve
+    propagar o erro em vez de usar um estado obsoleto em memória. Não há
+    monkeypatch do loader; a leitura de arquivo é real, via chdir.
+    """
+    real_pgsi_path = Path(__file__).resolve().parents[1] / "data" / "pgsi.json"
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    pgsi_copy = data_dir / "pgsi.json"
+    shutil.copy(real_pgsi_path, pgsi_copy)
+
+    monkeypatch.chdir(tmp_path)
+
+    result = app.invoke(initial_state("quero começar o teste"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["question_id"] == "q1"
+
+    # Resposta válida para q1: o mesmo invoke já reexecuta ask_question para
+    # montar o payload de q2, relendo o arquivo enquanto ele ainda é válido.
+    result = app.invoke(Command(resume="0"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["question_id"] == "q2"
+
+    # Corrompe o arquivo agora, entre os dois resumes.
+    pgsi_copy.write_text("{ isto não é um json válido", encoding="utf-8")
+
+    # O próximo resume reexecuta ask_question do início e relê o arquivo,
+    # agora corrompido: PGSIDataError deve propagar em vez de ser engolido.
+    with pytest.raises(PGSIDataError):
+        app.invoke(Command(resume="0"), config)
+
+
+def test_fresh_agent_instance_does_not_share_state(config):
+    """Duas instâncias de build_agent() com o mesmo thread_id não dividem
+    checkpoint algum entre si (limitação documentada no README, seção 10:
+    "InMemorySaver não persiste entre processos").
+
+    build_agent() cria um InMemorySaver novo a cada chamada (graph.py): o
+    thread_id só identifica uma sessão dentro do mesmo objeto de grafo, não
+    entre instâncias diferentes. Este teste avança uma sessão no primeiro
+    agente até q2 e mostra que um segundo agente, com o mesmo thread_id,
+    começa do zero em q1, sem nenhum traço do progresso anterior.
+    """
+    agent_one = build_agent(FakeLLM())
+    agent_two = build_agent(FakeLLM())
+
+    result = agent_one.invoke(initial_state("quero começar o teste"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["question_id"] == "q1"
+
+    result = agent_one.invoke(Command(resume="0"), config)
+    payload = read_interrupt_payload(result)
+    assert payload is not None and payload["question_id"] == "q2"
+    assert result["answers"] == {"q1": 0}
+
+    # Prova direta: o checkpointer de agent_two não tem registro nenhum para
+    # esse thread_id, mesmo com todo o progresso já salvo em agent_one. Um
+    # StateSnapshot vazio só é possível porque cada build_agent() cria seu
+    # próprio InMemorySaver (graph.py); se o checkpoint fosse compartilhado,
+    # get_state aqui devolveria os valores já avançados por agent_one.
+    assert agent_two.get_state(config).values == {}
+
+    # Mesmo thread_id, mas uma instância de grafo nova: pausa em q1 de novo,
+    # sem visibilidade nenhuma do progresso feito em agent_one.
+    fresh_result = agent_two.invoke(initial_state("quero começar o teste"), config)
+    fresh_payload = read_interrupt_payload(fresh_result)
+    assert fresh_payload is not None
+    assert fresh_payload["question_id"] == "q1"
+    # answers usa Annotated[dict, operator.or_] (state.py): se o checkpoint
+    # fosse mesmo compartilhado, esse merge preservaria {"q1": 0} aqui mesmo
+    # após um invoke "do zero". Vir vazio fecha a prova de que não há nada
+    # para mesclar, não é só o índice da pergunta que reiniciou.
+    assert fresh_result["answers"] == {}
