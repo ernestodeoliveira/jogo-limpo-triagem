@@ -45,26 +45,29 @@ def _advance(app, config, result, reply, fallback_digit):
     return result
 
 
+# Mixed digit and off-table text replies (paired with an unambiguous digit
+# fallback for _advance): exercises both the deterministic table and the
+# real LLM fallback parser end to end. Shared by every test that runs a
+# full 9-question session, so the two paths stay in sync in one place.
+MIXED_DIGIT_AND_FALLBACK_REPLIES = [
+    ("0", "0"),
+    ("de vez em quando", "1"),
+    ("2", "2"),
+    ("sempre, todas as vezes", "3"),
+    ("nunca fiz isso", "0"),
+    ("1", "1"),
+    ("na maior parte das vezes", "2"),
+    ("3", "3"),
+    ("raramente, so umas duas vezes", "1"),
+]
+
+
 def test_real_llm_smoke_full_triage(real_llm):
     app = build_agent(real_llm)
     config = {"configurable": {"thread_id": uuid4().hex}}
-    # Mixed digit and off-table text replies (paired with an unambiguous
-    # digit fallback for _advance): exercises both the deterministic table
-    # and the real LLM fallback parser end to end.
-    replies = [
-        ("0", "0"),
-        ("de vez em quando", "1"),
-        ("2", "2"),
-        ("sempre, todas as vezes", "3"),
-        ("nunca fiz isso", "0"),
-        ("1", "1"),
-        ("na maior parte das vezes", "2"),
-        ("3", "3"),
-        ("raramente, so umas duas vezes", "1"),
-    ]
 
     result = app.invoke(initial_state("quero começar o teste"), config)
-    for reply, fallback_digit in replies:
+    for reply, fallback_digit in MIXED_DIGIT_AND_FALLBACK_REPLIES:
         payload = read_interrupt_payload(result)
         assert payload is not None
         result = _advance(app, config, result, reply, fallback_digit)
@@ -153,26 +156,12 @@ def test_real_llm_stress_sequential_sessions(real_llm):
     previous session's checkpoint.
     """
     app = build_agent(real_llm)
-    # Same mixed digit/off-table replies as test_real_llm_smoke_full_triage,
-    # reused verbatim across the 3 sessions: the point of this test is
-    # session isolation, not reply variety.
-    replies = [
-        ("0", "0"),
-        ("de vez em quando", "1"),
-        ("2", "2"),
-        ("sempre, todas as vezes", "3"),
-        ("nunca fiz isso", "0"),
-        ("1", "1"),
-        ("na maior parte das vezes", "2"),
-        ("3", "3"),
-        ("raramente, so umas duas vezes", "1"),
-    ]
 
     sessions = []
     for _ in range(3):
         config = {"configurable": {"thread_id": uuid4().hex}}
         result = app.invoke(initial_state("quero começar o teste"), config)
-        for reply, fallback_digit in replies:
+        for reply, fallback_digit in MIXED_DIGIT_AND_FALLBACK_REPLIES:
             payload = read_interrupt_payload(result)
             assert payload is not None
             result = _advance(app, config, result, reply, fallback_digit)
