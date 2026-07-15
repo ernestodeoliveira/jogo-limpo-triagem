@@ -333,3 +333,72 @@ def test_get_llm_local_endpoint_no_warning(monkeypatch, capsys, base_url):
     get_llm()
 
     assert capsys.readouterr().err == ""
+
+
+def test_llm_retries_exhausted_on_server_error():
+    # Builds a real ChatOpenAI client directly, bypassing get_llm() and the
+    # SelfConsistencyLLM wrapper, so this exercises only the OpenAI SDK's
+    # own retry behavior against a simulated HTTP transport (B-11). The
+    # transport never touches the network: httpx.MockTransport intercepts
+    # the request and returns a canned response.
+    import httpx
+    import openai
+    from langchain_openai import ChatOpenAI
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        # A low retry-after-ms header keeps the SDK's backoff sleep
+        # negligible, so exhausting the retries stays fast (measured
+        # empirically at well under 3s, no sleep monkeypatch needed).
+        return httpx.Response(
+            500,
+            json={"error": {"message": "simulated failure", "type": "server_error"}},
+            headers={"retry-after-ms": "1"},
+        )
+
+    llm = ChatOpenAI(
+        base_url="http://test-endpoint.invalid/v1",
+        model="test-model",
+        api_key="not-needed",
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=LLM_MAX_RETRIES,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(openai.InternalServerError):
+        llm.invoke("qualquer texto")
+
+    assert len(calls) == 1 + LLM_MAX_RETRIES
+
+
+def test_llm_timeout_maps_to_api_timeout_error():
+    # Same isolation as above: a bare ChatOpenAI client, no
+    # SelfConsistencyLLM wrapper. Here the transport raises httpx.ReadTimeout
+    # on every call instead of returning a response, so this confirms the
+    # SDK maps a transport-level timeout to openai.APITimeoutError and also
+    # retries it up to LLM_MAX_RETRIES times (B-11, F-07).
+    import httpx
+    import openai
+    from langchain_openai import ChatOpenAI
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        raise httpx.ReadTimeout("simulated timeout")
+
+    llm = ChatOpenAI(
+        base_url="http://test-endpoint.invalid/v1",
+        model="test-model",
+        api_key="not-needed",
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=LLM_MAX_RETRIES,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(openai.APITimeoutError):
+        llm.invoke("qualquer texto")
+
+    assert len(calls) == 1 + LLM_MAX_RETRIES
