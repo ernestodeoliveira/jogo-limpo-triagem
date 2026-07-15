@@ -269,7 +269,7 @@ Nenhum sobrevivente indicou defeito em código de produção; todas as lacunas r
 **`src/triagem/tools.py`** (40 sobreviventes: 18 equivalente, 21 lacuna real, 1 bug de ferramenta):
 - Equivalente: mutações de mensagem de erro em `_read_pgsi_data`/`load_pgsi_questions`/`load_pgsi_scale`/`compute_pgsi_score`/`TriageOutcome` cujo teste só verifica o tipo da exceção ou um `match=` de substring que sobrevive ao redor de um wrap "XX"; `FileExistsError` em `write_triage_report` (só o tipo é checado); um `.replace(":", "")` redundante em `_sanitize_timestamp` (o regex seguinte já remove `:`); `indent=2` → `indent=3` em `model_dump_json` (o teste faz `json.loads`, indiferente à indentação).
 - Bug de ferramenta: ID 233 (ver seção acima).
-- Lacuna real (22 mutantes, mas convergem em 4 causas raiz, viram **B-18** a **B-21**):
+- Lacuna real (21 mutantes, mas convergem em 4 causas raiz, viram **B-18** a **B-21**):
   - Separador `", "` em listas de chaves faltando/extras (`compute_pgsi_score`, `TriageOutcome._check_answers_complete`): nenhum teste hoje derruba 2+ chaves ao mesmo tempo, então o separador nunca é exercitado. **B-18**.
   - `_sanitize_timestamp`: truncamento no limite de 32 caracteres e fallback `"sem-timestamp"` nunca são exercitados (ao contrário de `_sanitize_thread_id`, que já tem os dois casos cobertos). **B-19**.
   - `_render_markdown`: o teste existente (`test_md_contains_answers_band_and_referrals`) só verifica substrings soltas; separadores de linha, os headings (`"# Relatório de triagem PGSI"`, `"## Respostas"`, `"## Encaminhamentos"`), as linhas `"Thread: ..."`/`"Data e hora: ..."` e os rótulos `"Pontuação: ..."`/`"Faixa: ..."` nunca são checados por conteúdo exato ou posição. **B-20**.
