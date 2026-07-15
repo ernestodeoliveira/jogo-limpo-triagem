@@ -492,6 +492,138 @@ padrão das sessões de planejamento anteriores deste projeto (P-004, P-005, P-0
 
 **Resultado**: `docs/PARSER_HARDENING_PLAN.md` criado com as 5 seções pedidas. Opções avaliadas em tabela (temperature=0 isolado; self-consistency/votação por maioria; reforço do prompt; combinação (a)+(b)), com o trade-off central explicitado: `temperature=0` tensiona com self-consistency porque remove a diversidade entre as N amostras de que a votação depende, e isolado não corrige a concordância semântica, só congela qual comportamento prevalece sob decodificação gulosa. Decisão recomendada e aceita: self-consistency (N=3, maioria estrita, fail-closed em empate) combinada com reforço do `PARSE_SYSTEM_PROMPT` citando os dois bypasses confirmados como exemplos negativos, aplicada só ao parser de resposta; wrapper novo (`SelfConsistencyLLM`, dispatch por schema no mesmo padrão de `FakeLLM`) aplicado só ao cliente real dentro de `get_llm()`, deixando `FakeLLM` e os 284 testes offline intocados. Fatia testável offline desenhada em torno de uma função pura `majority_vote` e um double de sequência roteirizada. Protocolo de verificação: medir a taxa de bypass por chamada isolada ANTES da mitigação (R=30 por caso confirmado) e a taxa da votação completa DEPOIS, em 2 rodadas independentes, com aprovação explícita do usuário antes de cada rodada contra o endpoint real. Backlog de implementação H-01 a H-07, mais **B-17** (pendência documentada, não implementada: se o classificador de intenção precisa do mesmo tratamento). As 4 perguntas abertas foram decididas via AskUserQuestion na própria sessão, todas conforme a recomendação: N=3; regra de empate fail-closed; classificador fora de escopo (B-17); critério de fechamento = zero bypasses em ≥30 chamadas repetidas por caso confirmado, em 2 rodadas independentes. Nenhuma mudança de código nesta sessão, conforme escopo (só planejamento). `uv run pytest` confirmado verde (284 passed, 10 deselected) após o doc-only change. **PR #21**.
 
+### P-008: Refinamento e adiantamento do backlog de testes B-09 a B-15 (Claude Code, 14/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário PGSI,
+construído com LangGraph. A sessão I-007 (14/07/2026, PR #20) implementou o backlog de testes
+B-01 a B-08 de docs/TEST_AUDIT_PLAN.md, o corte que a sessão de planejamento P-006 havia
+definido como o que cabia antes do freeze de v0.1 (19/07/2026). 294 testes no total (284
+offline sempre verdes, mais 10 no tier opt-in `real_llm`).
+
+Os itens B-09 a B-15 do mesmo docs/TEST_AUDIT_PLAN.md ficaram deliberadamente FORA desse corte,
+catalogados como backlog pós-v0.1 (decisão das perguntas 1 e 3 da seção 5, ambas "conforme a
+recomendação" na época). Agora há tempo disponível antes da próxima versão, e o Ernesto quer
+adiantar a execução desses itens em vez de deixá-los inteiramente para depois. Esta sessão é
+sobre B-09 a B-15 (o restante do backlog de TESTES do P-006); NÃO inclui o B-16 (hardening do
+parser de resposta contra o bypass de injeção confirmado no I-007), que tem seu próprio prompt
+de planejamento separado por ser mudança de código de produção com trade-offs distintos.
+
+Os 6 itens fixos ainda pendentes (mais um condicional):
+- **B-09** (achados F-08, F-09): data/pgsi.json é relido sem cache a cada `ask_question`;
+  corrupção no meio de uma sessão em andamento propaga `PGSIDataError` até o except genérico
+  do CLI, sem teste (só testado na carga inicial); e a perda de estado do `InMemorySaver` entre
+  instâncias/processos é uma limitação aceita e documentada (README §10) mas não testada como
+  tal. Arquivo: tests/test_graph_e2e.py, 2 testes.
+- **B-10** (achado F-05): resume de um thread já finalizado ou com thread_id desconhecido,
+  comportamento não testado (o CLI se protege via `read_interrupt_payload`, mas o contrato do
+  grafo em si é público e não tem teste disso). O próprio achado F-05 já registra "exige
+  investigar o comportamento do langgraph pinado" antes de escrever a expectativa do teste,
+  igual ao que a sessão I-007 precisou fazer para `Command(resume=None)` no B-06 (que revelou
+  um `UnboundLocalError` real dentro do próprio LangGraph 1.2.9 em vez do comportamento
+  documentado). Arquivo: tests/test_graph_e2e.py, 2 testes.
+- **B-11** (achado F-07): `timeout=30`/`max_retries=2` do `ChatOpenAI` (implementado no O-03)
+  hoje só testado por atributo do cliente, nunca por comportamento sob falha real simulada.
+  Arquivo: tests/test_fakes.py, 1-2 testes, transporte httpx simulado.
+- **B-12** (achados F-19, F-07): stress contra o modelo real: sessões consecutivas, respostas
+  no limite de 300 caracteres caindo no fallback, timeout contra porta morta/fechada. Arquivo:
+  tests/test_real_llm.py (tier `real_llm`), 3 testes. Exige aprovação explícita do usuário
+  antes de rodar contra o endpoint real, mesmo protocolo já usado no O-06 e no B-08 do I-007.
+- **B-13** (achado F-16): piloto amostral de mutation testing (`mutmut` via `uvx`, sem virar
+  dependência versionada do projeto) sobre parsing.py, safety.py e tools.py; produto é um
+  relatório de mutantes sobreviventes, não necessariamente um teste novo.
+- **B-14** (achado F-10): ramos menores do CLI sem teste (`KeyboardInterrupt`, compartilha
+  branch com `EOFError` mas nunca é disparado; `RuntimeError` de configuração retornando exit
+  2; exceção do classificador de intenção propagando sem tratamento, já que classify.py não
+  tem try/except próprio). Arquivo: tests/test_cli.py, 2-3 testes.
+- **B-15** (condicional): property-based testing com `hypothesis` para `normalize()`/parser.
+  A pergunta aberta 1 da seção 5 decidiu em 13/07/2026 NÃO adicionar hypothesis como
+  dependência nova ("corpus fixo já basta"). Reavaliar essa decisão à luz do tempo agora
+  disponível é uma pergunta em aberto desta sessão, não algo já resolvido a favor.
+
+O achado F-15 (docs vs código) NÃO faz parte deste backlog: já foi decidido que vira checklist
+do Anexo A, para executar junto com o T-19 em diante (documentação final), não com B-09 a B-15.
+
+Requisitos inegociáveis: `uv run pytest` (sem marcador) e o CI continuam 100% executáveis
+offline e sem chave de API; a suíte atual (294 testes) não pode regredir; documentação em
+PT-BR, código e identificadores em inglês; não usar travessão longo em nenhum texto gerado;
+Conventional Commits 1.0.0 em inglês; nenhuma dependência nova sem decisão explícita do usuário
+(relevante especialmente para o B-15/hypothesis).
+
+# Papel
+Atue como QA lead / arquiteto(a) de testes sênior, o mesmo papel da sessão P-006, mas com
+escopo mais estreito: decidir SE e COMO adiantar B-09 a B-15, não fazer uma nova auditoria
+completa da suíte. Os achados F-05, F-07, F-08, F-09, F-10, F-16 e F-19 já existem e não
+precisam ser redescobertos, só executados ou refinados onde a especificação ainda está vaga.
+Nesta sessão você NÃO escreve nenhum teste novo nem roda mutation testing de fato, apenas
+investiga o que falta de refinamento, decide as perguntas abertas e produz um backlog pronto
+para uma sessão futura de implementação (mesmo padrão subagent-driven-development do I-007).
+
+# Tarefa
+1. Leia a seção 3 (achados F-05, F-07, F-08, F-09, F-10, F-16, F-19) e a seção 4 (linhas B-09
+   a B-15) de docs/TEST_AUDIT_PLAN.md, e a seção 5 (perguntas 1 e 3, já decididas em 13/07,
+   e por quê) para não repetir o racional já registrado. Leia também os arquivos de produção e
+   teste citados em cada achado (nodes.py, tools.py, fakes.py, classify.py, cli.py e os
+   arquivos de teste correspondentes).
+2. Para cada um dos 6 itens fixos (B-09, B-10, B-11, B-12, B-13, B-14), confirme se a
+   especificação atual de docs/TEST_AUDIT_PLAN.md já é suficiente para implementação direta
+   (como foi para a maior parte de B-01 a B-08), ou se precisa de refinamento antes. Em
+   particular, para o B-10: investigue agora o comportamento real do LangGraph pinado para
+   resume de thread finalizado/desconhecido (não deixe para o implementador descobrir na
+   hora, como aconteceu com o `Command(resume=None)` do B-06); atualize a especificação do
+   teste com o comportamento real observado.
+3. Reavalie explicitamente as duas decisões anteriores à luz do tempo agora disponível:
+   a. **B-15/hypothesis**: a decisão de 13/07 foi não adicionar hypothesis como dependência
+      nova. Avalie de novo: o corpus fixo hoje (tests/test_parsing.py, tests/test_adversarial.py)
+      cobre `normalize()`/`parse_answer_deterministic` suficientemente, ou propriedades como
+      "normalize é idempotente" ou "todo valor de ANSWER_TABLE sobrevive a espaços/maiúsculas
+      extras" justificam hypothesis mesmo com o custo de uma dependência de teste nova?
+   b. **B-13/mutation testing**: defina o escopo exato do piloto (quais arquivos exatamente,
+      quantos mutantes, limite de tempo de execução do `mutmut`), e se o resultado deve virar
+      um commit versionado (relatório salvo em algum lugar do repo) ou só uma execução ad hoc
+      registrada em docs/prompts.md.
+4. Para o B-12 (stress contra o modelo real): confirme que o protocolo de aprovação explícita
+   antes de chamar o endpoint real (mesmo do O-06 e do B-08) está corretamente referenciado, e
+   refine os 3 testes propostos se necessário (ex.: quantas "sessões consecutivas" é um número
+   razoável dado o tempo de resposta do modelo local).
+5. Decida a ordem de execução e o agrupamento em commits, já que B-09 e B-10 tocam o mesmo
+   arquivo (tests/test_graph_e2e.py); considere se cabem no mesmo commit ou devem ficar
+   separados, dado que a convenção do projeto é um commit por achado/item de backlog.
+6. Proponha o backlog final (mesmo formato de tabela de docs/TEST_AUDIT_PLAN.md), com qualquer
+   refinamento dos passos 2 a 4 já incorporado, pronto para uma sessão de implementação (I-008)
+   executar com o padrão subagent-driven-development já usado em I-004, I-006 e I-007.
+7. Liste as perguntas abertas que exigem decisão do Ernesto (pelo menos: aprovar ou não
+   hypothesis agora para o B-15; escopo exato do piloto de mutation testing do B-13; se o B-13
+   gera commit versionado ou fica ad hoc; se algum dos 6 itens deve ficar de fora mesmo com
+   tempo disponível).
+
+# Formato
+Atualize docs/TEST_AUDIT_PLAN.md com o backlog refinado de B-09 a B-15 (editando as linhas
+existentes da seção 4 com qualquer refinamento feito) e uma nota curta registrando o racional
+de cada refinamento e a decisão de adiantar essa execução. Ao final, decida as perguntas
+abertas do item 7 com o usuário via AskUserQuestion, no mesmo padrão das sessões de
+planejamento anteriores deste projeto (P-004, P-005, P-006).
+```
+
+**Resultado**: `docs/TEST_AUDIT_PLAN.md` atualizado com o backlog refinado de B-09 a B-15 (seção 4) e o achado F-05 investigado (seção 3.2). Investigação do B-10 executada contra o langgraph pinado (1.2.9) com `InMemorySaver`: resume de thread finalizado é um no-op silencioso (sem `__interrupt__`, sem gravar relatório novo); resume de thread_id desconhecido levanta `KeyError('user_input')` e deixa um checkpoint parcial pendente, mesmo padrão de artefato de implementação já visto no B-06 do I-007. As 4 perguntas abertas foram decididas via AskUserQuestion na própria sessão, todas conforme a recomendação: B-15/hypothesis aprovado agora como dependência dev (supersede a decisão da pergunta 1 de 13/07); B-13 com escopo nos 3 arquivos completos (parsing.py, safety.py, tools.py), sem amostragem; saída do B-13 versionada como novo Anexo B do audit plan; todos os 6 itens fixos (B-09 a B-14) mais o B-15 aprovado entram no lote, com ordem de execução definida (B-09, B-10, B-14, B-11, B-15, B-13, B-12) para a futura sessão de implementação I-010. `uv run pytest` confirmado verde (317 passed, 12 deselected) após o doc-only change, antes do desvio para o I-010 abaixo; o branch final deste PR, já rebaseado sobre o main com o fix do PR #24 incluído, roda em 364 passed, 12 deselected (ver I-010).
+
+Durante a exploração do código de produção para esta sessão, foi encontrado um achado de segurança não relacionado ao escopo B-09/B-15: o guard contra `"-1"` adicionado no B-16 cobria só o hífen ASCII, não variantes Unicode. Decidido via AskUserQuestion, no meio da sessão, corrigir imediatamente num PR próprio em vez de esperar; ver a entrada I-010 (o achado e sua correção não fazem parte do backlog de testes B-09 a B-15 nem deste prompt de planejamento). **PR #25** (este documento e o registro desta entrada).
+
+### I-010: Correção do bypass de confusáveis Unicode no parser de resposta (F-20 a F-24) (Claude Code, 14/07)
+
+Sessão sem prompt de planejamento formal prévio: o achado F-20 surgiu organicamente durante a exploração de código da sessão P-008 (acima), e a decisão de corrigir imediatamente, num PR próprio, veio de uma pergunta via AskUserQuestion no meio dessa mesma sessão, não de um prompt Contexto+Papel+Tarefa+Formato redigido com antecedência. Registrado aqui como implementação por ter alterado código de produção (`src/triagem/parsing.py`), diferente do escopo doc-only do P-008.
+
+O guard `_LEADING_NEGATIVE_NUMBER` (regex `^-\s*\d`, adicionado no B-16 para impedir que `"-1"` colapsasse sobre a chave válida `"1"` da tabela) cobria só o hífen ASCII. Seguindo a política do usuário de rodar code review (skill `superpowers:requesting-code-review`, agente `superpowers:code-reviewer`) e security review (skill `security-review`) antes de qualquer PR, o fix passou por 4 rodadas de revisão adversarial independentes, cada uma encontrando e confirmando empiricamente um bypass real do commit anterior:
+
+1. **F-20**: variantes Unicode de traço/menos (en dash, em dash, minus sign, formas de compatibilidade) não cobertas pelo guard ASCII-only. Corrigido ampliando para uma classe de caracteres Unicode enumerados.
+2. **F-21**: um caractere invisível (zero-width space, word joiner, BOM; categoria Cf) antes do sinal driblava a âncora `^` da regex, já que `str.strip()` não remove caracteres Cf. Corrigido reescrevendo o guard para checar categoria Unicode do primeiro caractere visível.
+3. **F-22/F-23**: a reescrita por categoria ainda falhava com pontuação comum, caractere de controle ou marca combinante entre o sinal e o dígito (ex. `"-!1"`, `"-.1"`), e com confusáveis de símbolo fora de qualquer enumeração fixa (sinal de menos comercial, emoji de menos, prolongador katakana, traço de desenho de caixa, combining grapheme joiner). Corrigido substituindo toda a abordagem de enumeração por um único invariante estrutural: quando `normalize()` colapsa a entrada para um dígito isolado da tabela, o conteúdo visível do texto cru (ignorando só espaço em branco e caracteres genuinamente invisíveis) precisa ser exatamente esse dígito, ou a entrada cai no fallback de LLM.
+4. **F-24**: soft hyphen (U+00AD), categoria Cf mas não genuinamente invisível em muitos renderizadores (aparece como hífen em quebra de linha). Corrigido excluindo-o da isenção de caracteres Cf.
+
+**Resultado**: 4 commits na branch `fix/unicode-minus-guard`, um por rodada de achado, cada um com testes de regressão cobrindo o bypass específico encontrado. Verificação final por um agente de code review que rodou fuzz exaustivo contra todo o espaço de codepoints Unicode (checagem de 1 e 2 caracteres, ~3,3 milhões de combinações) em ambos os estados (com e sem o fix do F-24), sem encontrar nenhum bypass adicional. Contrapartida deliberada e documentada: alguns formatos decorados antes aceitos (`"(1)"`, `"1)"`, `"1."`, `"1,"`) agora também caem no fallback de LLM em vez de casar instantaneamente; confirmado que nenhum outro código do repositório dependia dessa tolerância. `uv run pytest` verde (364 passed, 12 deselected) e `ruff check`/`ruff format --check` limpos antes de cada commit. **PR #24**, mesclado via squash após CI verde. Achado registrado retroativamente em `docs/TEST_AUDIT_PLAN.md` seção 3.6 (doc-only, mesma sessão do P-008/PR #25).
+
 ## 2. Implementação
 
 ### I-001: Implementação do lote do dia 13/07, T-01 a T-06 (Claude Code, 12/07)
