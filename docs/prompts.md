@@ -1716,3 +1716,16 @@ produção ou de dependência.
   segue estático, público e sem segredo, hoje em `parsing.py:118`); mais a nova seção "6.
   Rodadas de verificação delta" consolidando a rodada (estrutura decidida via AskUserQuestion:
   inline + seção 6, preservando o histórico).
+
+Gates: code review (`superpowers:code-reviewer`) + security review (skill `security-review`)
+rodados sobre o diff completo. A primeira rodada devolveu 1 achado Important (o registro do
+LLM07 afirmava que todo texto de usuário chega envolto em `<answer>`, o que só vale para o
+caminho do parser; o classificador recebe o texto cru como mensagem `user`) e 4 Minors de
+precisão (nota datada no A-04 apontando o O-03, parêntese escopando o LLM09 na seção 6,
+"exatamente 3 amostras" em vez de "até 3", reformulação do parágrafo de esclarecimentos sobre o
+prompt), todos corrigidos num commit de ajustes; as duas revisões foram re-executadas sobre o
+estado atualizado e voltaram limpas (a de código verificou os 5 fixes item a item; a de
+segurança confirmou o diff docs-only e nenhum achado, com todas as afirmações de postura
+verificadas contra o código). `uv run pytest` verde antes de cada commit (378 testes offline,
+15 deselected no tier `real_llm`; nenhuma chamada ao endpoint real na sessão) e
+`uvx ruff check`/`uvx ruff format --check` limpos. **PR #27**.
