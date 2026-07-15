@@ -115,6 +115,13 @@ def test_main_config_error_returns_2(monkeypatch, capsys):
     main() must report a config error and exit 2 without any network call.
     """
     monkeypatch.delenv("TRIAGE_FAKE_LLM", raising=False)
+    monkeypatch.delenv("TRIAGE_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("TRIAGE_LLM_MODEL", raising=False)
+    # Neutralize load_dotenv_if_available(): if python-dotenv were ever
+    # installed and a .env with the endpoint envs existed in the cwd,
+    # load_dotenv(override=False) would repopulate the vars deleted above
+    # and this test would stop exercising the RuntimeError branch at all.
+    monkeypatch.setattr("triagem.cli.load_dotenv_if_available", lambda: None)
 
     exit_code = main()
 
