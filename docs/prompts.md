@@ -624,6 +624,171 @@ O guard `_LEADING_NEGATIVE_NUMBER` (regex `^-\s*\d`, adicionado no B-16 para imp
 
 **Resultado**: 4 commits na branch `fix/unicode-minus-guard`, um por rodada de achado, cada um com testes de regressão cobrindo o bypass específico encontrado. Verificação final por um agente de code review que rodou fuzz exaustivo contra todo o espaço de codepoints Unicode (checagem de 1 e 2 caracteres, ~3,3 milhões de combinações) em ambos os estados (com e sem o fix do F-24), sem encontrar nenhum bypass adicional. Contrapartida deliberada e documentada: alguns formatos decorados antes aceitos (`"(1)"`, `"1)"`, `"1."`, `"1,"`) agora também caem no fallback de LLM em vez de casar instantaneamente; confirmado que nenhum outro código do repositório dependia dessa tolerância. `uv run pytest` verde (364 passed, 12 deselected) e `ruff check`/`ruff format --check` limpos antes de cada commit. **PR #24**, mesclado via squash após CI verde. Achado registrado retroativamente em `docs/TEST_AUDIT_PLAN.md` seção 3.6 (doc-only, mesma sessão do P-008/PR #25).
 
+### P-009: Planejamento do fechamento do v0.1, backlog T-19 a T-24 (Claude Code, 15/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário PGSI,
+construído com LangGraph. Estado em 15/07/2026: T-01 a T-18 completos e mergeados; CI com
+branch protection (check `tests`); auditoria OWASP implementada (I-006) e verificação delta
+concluída (I-012, PR #27); backlogs de teste B-01 a B-16 completos (378 testes offline sempre
+verdes + 15 no tier opt-in real_llm); risco residual do parser (B-16) medido e aceito. Restam
+apenas as tarefas de fechamento do v0.1: T-19 a T-24 do docs/PLAN.md (seção 4), mais dois itens
+de documentação do backlog OWASP que a própria auditoria mandou dobrar no T-21: O-05
+(proveniência do modelo local, versão do oMLX, autenticação do endpoint, checksum dos pesos) e
+O-08 (documentar a limitação aceita dos relatórios em texto plano no README §10/§11).
+
+Motivação externa: o congelamento v0.1 é 19/07 e a entrega escolar é 20/07/2026 (o enunciado
+diz 22h no corpo e 15h no checklist; confirmar o horário com o professor é ação do Ernesto,
+fora do repo). A validação de 14/07 (validacao.md, na raiz, não versionado) mapeou as 5
+pendências da nota exatamente para estas tarefas: F-01 slides (T-22, critério que vale 1,0),
+F-02 exemplos reais de entrada e saída (T-20/T-21, impacta critério de 2,0), F-03 relatório de
+amostra em reports/ (T-20), F-04 README §6 ainda citando Gemini/GOOGLE_API_KEY em vez do
+endpoint local (T-21/T-23, decisão Q6), F-05 referências cruzadas do README §13 (T-21/T-23).
+O PLAN.md §5 também exige trocar a redação "versão validada em português" por "versão
+brasileira com adaptação transcultural e validade de conteúdo (Moura et al., 2026)" no README
+§12 e na D-07, nas tarefas T-21/T-23.
+
+Requisitos inegociáveis: `uv run pytest` (sem marcador) e o CI continuam 100% verdes, offline e
+sem chave de API; nenhuma chamada ao endpoint LLM real nesta sessão de planejamento;
+documentação em PT-BR, código e identificadores em inglês; não usar travessão longo em nenhum
+texto; Conventional Commits 1.0.0 em inglês. Antes de abrir o PR: code review e security review
+são obrigatórios mesmo em PR docs-only (instrução permanente do usuário); se qualquer uma
+encontrar um achado real (Important/Critical/High), corrigir e RODAR AS DUAS REVISÕES DE NOVO
+sobre o estado atualizado antes de prosseguir.
+
+# Papel
+Atue como arquiteto(a) de release sênior numa sessão de PLANEJAMENTO (modo Plan), não de
+implementação. Nenhuma mudança em código de produção, testes ou docs além do documento de plano
+produzido e do registro da sessão; a execução fica para a sessão I-013. Não redecida o que já
+foi decidido (Q6, threat model, redação PGSI, riscos aceitos); planeje a aplicação dessas
+decisões.
+
+# Tarefa
+1. Leia como fonte de verdade: docs/PLAN.md seções 4 e 5 (T-19 a T-24 e decisões),
+   docs/OWASP_LLM_AUDIT_PLAN.md seção 4 (O-05 e O-08), validacao.md (F-01 a F-05) e os trechos
+   atuais de README.md, PRD e ARCHITECTURE citados neles (§6, §7, §8, §11, §12, §13 do README;
+   PRD RNF-01 e §8; ARCHITECTURE §9). Confirme, contra o estado real do repo, o que cada tarefa
+   ainda exige de fato (parte pode já estar parcialmente atendida; ex. docs/prompts.md já é
+   atualizado a cada sessão, então o T-19 pode se resumir ao log S-0xx).
+2. Refine T-19 a T-24 num backlog executável: para cada tarefa, escopo exato, arquivos,
+   critério de aceite, commit sugerido, dependências, e o que exige endpoint real (T-20) ou
+   informação/decisão do usuário. Dobre O-05 e O-08 no escopo do T-21, e F-04/F-05 e a redação
+   PGSI no T-21/T-23. Defina também como fica o T-24 (tag e congelamento direto na main após o
+   último merge, sem PR, no padrão do C-03).
+3. Decida via AskUserQuestion (sempre com recomendação), no mínimo: (a) o que compõe o log
+   final de prompts S-001 a S-003 do T-19, dado que o código hoje tem 2 prompts de sistema
+   (CLASSIFY_SYSTEM_PROMPT e PARSE_SYSTEM_PROMPT) e não há persona por design; (b) T-20 com
+   transcritos do LLM real (exige aprovação explícita antes de chamar o endpoint oMLX) ou
+   offline rotulado como tal; (c) formato e conteúdo mínimo dos 2 slides do T-22 (docs/slides.md
+   ou PDF, dado que o README §13 cita slides.md); (d) granularidade dos PRs da implementação
+   (um por tarefa ou lotes, com T-23/T-24 por último); (e) protocolo do T-23 "máquina limpa"
+   neste ambiente (clone novo em diretório temporário + uv sync + pytest + CLI offline, o que
+   registrar como evidência); (f) de onde vêm versão do oMLX e checksum dos pesos para o O-05
+   (informação que só o Ernesto tem; se não disponível agora, definir o fallback de redação).
+4. Registre o plano refinado em docs/RELEASE_PLAN.md novo (padrão dos outros planos: contexto,
+   backlog em tabela, perguntas abertas com as decisões registradas).
+5. Ao final, gere no chat o prompt de implementação I-013 completo (Contexto + Papel + Tarefa +
+   Formato), pronto para colar na sessão seguinte, cobrindo o backlog refinado com os gates
+   obrigatórios e subagent-driven-development onde fizer sentido.
+6. Rode code review e security review sobre o diff (docs-only) antes do PR; corrija achados
+   Important+ e repita as duas até não haver mais achados relevantes. Abra o PR, confirme o CI
+   verde, mescle (confirme com o usuário antes de mesclar você mesmo) e remova o
+   worktree/branch.
+7. Registre a sessão em docs/prompts.md como P-009 (prompt e resultado), na seção
+   "1. Planejamento", no padrão do arquivo.
+
+# Formato
+Worktree isolado (.worktrees/release-plan), seguindo o fluxo já estabelecido. PR único
+docs-only (docs/RELEASE_PLAN.md + docs/prompts.md), commit sugerido
+`docs(release): plan v0.1 closeout backlog t-19 to t-24`. `uv run pytest` deve seguir 100%
+verde offline; rode `uvx ruff check` e `uvx ruff format --check` antes de cada commit. Ao
+final, imprima no chat: o backlog refinado com as decisões tomadas e o prompt I-013.
+```
+
+**Nota sobre citações de seção no prompt acima**: o prompt (preservado verbatim, ver `jogo-limpo-prompt-verbatim-lesson`) contém três citações incorretas de seção do PLAN.md. Duas sobre a localização de T-19 a T-24: no Contexto, "T-19 a T-24 do docs/PLAN.md (seção 4)"; na Tarefa passo 1, "docs/PLAN.md seções 4 e 5 (T-19 a T-24 e decisões)". O backlog T-19 a T-24 está de fato na seção 3 ("Backlog ordenado") do PLAN.md; a seção 4 é "Riscos e plano B" e a seção 5 é "Perguntas abertas" (que de fato contém as decisões, incluindo Q6). A terceira, também no Contexto, atribui a troca de redação do PGSI a "O PLAN.md §5"; essa troca está no Anexo A do PLAN.md (linhas 125 e 129), não na seção 5. `docs/RELEASE_PLAN.md` §1 e §2 já citam as seções corretas (§3 no §1, Anexo A no §2).
+
+**Resultado**: `docs/RELEASE_PLAN.md` criado com o backlog refinado T-19 a T-24 (escopo exato, arquivos, critério de aceite, commit sugerido, dependências e exigência de LLM real por tarefa), confrontado contra o estado real do repo levantado nesta sessão: zero entradas `S-0xx` existentes apesar da convenção declarada, `examples/`/`docs/slides.md` inexistentes, `reports/` não versionado no git (diretório local vazio; git não rastreia diretórios vazios, então nem o diretório existe num clone novo até a primeira execução gravar um relatório). A inconsistência Gemini/`GOOGLE_API_KEY` no README §6/§11, PRD RNF-01/§8 e ARCHITECTURE §9 já estava mapeada no `docs/PLAN.md` §5 (impactos da decisão Q6, 12/07/2026); o que esta sessão confirmou de novo foi que, em 15/07, essas correções ainda não tinham sido aplicadas em nenhum dos três documentos. Seis decisões tomadas via `AskUserQuestion`, todas na opção recomendada: (a) T-19 registra `S-001`/`S-002` (não `S-003`, já que só existem dois prompts de sistema no código) mais uma nota "sem persona por design"; (b) T-20 com transcritos do LLM real, aprovação explícita antes de qualquer chamada ao endpoint, fallback offline rotulado; (c) T-22 como `docs/slides.md` estilo Marp; (d) dois lotes de PR (PR-1 = T-19+T-20+T-21+T-22, PR-2 = evidência do T-23 + registro I-013) mais a tag do T-24 sem PR; (e) T-23 via clone novo em diretório temporário, com o checklist dos 6 aceites do PRD §6 registrado no `Resultado` da futura entrada I-013; (f) dados do O-05 coletados na própria sessão I-013 com o Ernesto, com fallback de redação se indisponíveis. Também esclarecido que o "padrão C-03" citado no prompt não é um precedente de commit direto na main sem PR (a branch protection exige PR até para docs), e sim de uma ação de configuração de repositório sem commit de código, com aprovação explícita na hora; é esse o padrão que o T-24 replica para a tag `v0.1`. `uv run pytest` confirmado verde (378 passed, 15 deselected) e `ruff check`/`ruff format --check` limpos antes do commit. O prompt de implementação I-013 completo, gerado ao final desta sessão, está registrado logo abaixo (não só impresso no chat, ver `jogo-limpo-prompt-verbatim-lesson`). Code review (workflow xhigh) e security review rodados três vezes sobre o diff; sete achados na primeira rodada, quatro na segunda e um na terceira, todos corrigidos (os últimos dois Minor); security review sem achados nas três rodadas. **PR #28**, aberto após o terceiro ciclo de revisão fechar sem achados pendentes.
+
+**Prompt I-013** (Contexto + Papel + Tarefa + Formato, gerado nesta sessão e pronto para colar na sessão de implementação seguinte):
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário PGSI,
+construído com LangGraph. Estado em 15/07/2026: T-01 a T-18 completos; CI com branch protection
+(check `tests`); OWASP auditado (I-006) com delta verificado (I-012); 378 testes offline sempre
+verdes + 15 no tier opt-in real_llm; risco residual do parser aceito. O plano de fechamento do
+v0.1 está em docs/RELEASE_PLAN.md (sessão P-009, ver docs/prompts.md): backlog refinado T-19 a
+T-24 com todas as decisões já tomadas. Freeze v0.1 em 19/07, entrega escolar em 20/07/2026.
+
+Decisões já tomadas (NÃO redecida, aplique): (a) T-19 registra S-001 (CLASSIFY_SYSTEM_PROMPT,
+src/triagem/classify.py) e S-002 (PARSE_SYSTEM_PROMPT, src/triagem/parsing.py) verbatim numa
+nova seção "2. Prompts de sistema" do docs/prompts.md, com nota "sem persona por design";
+(b) T-20 grava os transcritos com o LLM real (oMLX local), com aprovação explícita do usuário
+ANTES de qualquer chamada ao endpoint; fallback offline rotulado se indisponível; (c) T-22 é
+docs/slides.md estilo Marp com 2 slides; (d) PR-1 = T-19+T-20+T-21+T-22, PR-2 = evidência do
+T-23 + registro I-013 (+ correções se houver), T-24 = tag v0.1 sem PR com aprovação na hora;
+(e) T-23 = clone novo em diretório temporário sem .env, uv sync, uv run pytest, CLI offline
+cobrindo aceites 1-3, README §6 cronometrado, checklist dos 6 aceites do PRD §6 como evidência;
+(f) O-05 coleta versão do oMLX, fonte e checksum dos pesos com o usuário na sessão; fallback de
+redação se indisponível. Nota de precisão: o backlog T-19 a T-24 está em docs/PLAN.md seção 3
+("Backlog ordenado"), não nas seções 4 ou 5.
+
+Requisitos inegociáveis: `uv run pytest` (sem marcador) e o CI continuam 100% verdes, offline e
+sem chave de API; documentação em PT-BR, código e identificadores em inglês; não usar travessão
+longo em nenhum texto; Conventional Commits 1.0.0 em inglês; nenhum token ou segredo em
+transcritos ou commits (conferir os transcritos antes de commitar). O .env não é auto-carregado:
+exportar TRIAGE_LLM_BASE_URL, TRIAGE_LLM_MODEL e OPENAI_API_KEY (token Bearer local) no shell
+da execução real. Antes de CADA PR: code review e security review são obrigatórios mesmo
+docs-only (instrução permanente); achado Important+ corrige e RODA AS DUAS DE NOVO sobre o
+estado atualizado antes de prosseguir. F-02 só fecha de fato quando o T-21 substituir os
+placeholders do README §7/§8 pelos trechos reais gravados no T-20; não marque F-02 fechado
+antes disso.
+
+# Papel
+Atue como engenheiro(a) de release sênior executando o fechamento do v0.1 conforme
+docs/RELEASE_PLAN.md, com subagent-driven-development onde fizer sentido (tarefas
+independentes: T-19, T-22) e execução direta onde há interação com o usuário (T-20 real).
+
+# Tarefa
+1. Leia docs/RELEASE_PLAN.md (backlog, decisões, sequência) e confira o estado do repo.
+2. PR-1 (worktree .worktrees/v01-closeout, branch docs/v01-closeout), na ordem:
+   T-19 (prompts.md S-001/S-002 + nota + renumeração; commit
+   `docs: update prompt log with final system prompts`);
+   T-20 (peça aprovação para subir/chamar o oMLX; grave baixo, moderado e crise em
+   examples/risco-baixo.md, examples/risco-moderado.md, examples/crise.md com cabeçalho de
+   data/modo/modelo; copie o relatório de uma execução para reports/sample-triagem-*.md/.json;
+   commit `docs: add execution transcripts and sample report`);
+   T-21 (README §4 diagrama com retry_offer/abort_node, §6 endpoint local sem Gemini, §7/§8
+   trechos reais, §10/§11 O-08, §11/§12 O-05 com os dados coletados com o usuário, §12 redação
+   PGSI nova, §13 árvore real; PRD RNF-01 e §8; ARCHITECTURE §9; DECISIONS D-07; OWASP §4 marca
+   O-05/O-08 implementados; commits `docs: finalize readme with real examples`,
+   `docs: document local model provenance and endpoint auth`,
+   `docs: document accepted storage limits`);
+   T-22 (docs/slides.md Marp, 2 slides: problema/processo/proposta e
+   entrada/saída/ferramentas/fluxo; commit `docs: add presentation outline`).
+   Gates, PR, CI verde, confirmar merge com o usuário, remover worktree.
+3. T-23 após o merge: clone novo em diretório temporário (sem .env), uv sync, uv run pytest,
+   CLI offline ponta a ponta (aceites 1-3), README §6 cronometrado (aceite 5), aceite 6 no
+   repo; monte o checklist dos 6 aceites com saídas resumidas.
+4. PR-2 (worktree novo): registro I-013 em docs/prompts.md (prompt + Resultado com o checklist
+   do T-23) + correções do T-23 se houver (`chore: final acceptance review fixes`). Gates,
+   PR, CI verde, confirmar merge.
+5. T-24 com aprovação explícita do usuário na hora: na main atualizada com CI verde, criar tag
+   anotada v0.1 (mensagem `chore(release): v0.1`) e push da tag; declarar o congelamento
+   (nenhum commit após a tag até a nota).
+6. Atualize a memória: marcar o prompt I-013 como executado, atualizar o próximo passo
+   (pós-v0.1: B-17 a B-21 ou fork Labs).
+
+# Formato
+Worktrees isolados em .worktrees/ (um por PR), fluxo de PR estabelecido. `uv run pytest` 100%
+verde offline e `uvx ruff check` + `uvx ruff format --check` antes de cada commit. Ao final,
+imprima no chat: checklist dos 6 aceites, links dos PRs e da tag v0.1, e as pendências que
+ficaram fora do repo (submissão no AVA, horário 22h vs 15h a confirmar com o professor).
+```
+
 ## 2. Implementação
 
 ### I-001: Implementação do lote do dia 13/07, T-01 a T-06 (Claude Code, 12/07)
