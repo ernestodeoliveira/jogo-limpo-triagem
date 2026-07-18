@@ -140,13 +140,14 @@ Racional completo em `docs/DECISIONS.md`.
 - Não é diagnóstico nem dispositivo médico; é triagem educacional com encaminhamento.
 - Detecção de crise por heurística + classificação simples; pode ter falsos negativos e falsos positivos.
 - `InMemorySaver` não persiste entre processos (sessão vive enquanto o CLI roda).
+- Relatórios de triagem gravados em texto plano local (`.md`/`.json` em `reports/`), sem criptografia nem controle de acesso além do filesystem do usuário. Mapeia à categoria LLM02 (Sensitive Information Disclosure) do OWASP LLM Top 10 2025. Limitação aceita no threat model single-user local porque os relatórios não contêm dado pessoal identificado: as sessões carregam apenas um `thread_id` aleatório.
 - Apenas PT-BR.
 - Interface por terminal (CLI); sem interface web.
 
 ## 11. Segurança e privacidade
 
 - Nenhuma chave ou segredo versionado; `.env` no `.gitignore`; `.env.example` só com nomes de variáveis.
-- Nenhum dado pessoal real: sessões identificadas apenas por `thread_id` aleatório.
+- Nenhum dado pessoal real: sessões identificadas apenas por `thread_id` aleatório; por isso os relatórios em texto plano local são uma limitação aceita (ver §10).
 - Entradas do usuário tratadas como dados, nunca interpoladas em prompts de sistema (mitigação de prompt injection).
 - Respostas fora do formato são rejeitadas com re-pergunta (máx. 3 tentativas por item).
 - Tracing LangSmith/LangChain desabilitado por padrão pelo CLI (`LANGSMITH_TRACING`, `LANGCHAIN_TRACING_V2`, `LANGSMITH_TRACING_V2` e `LANGCHAIN_TRACING`), mesmo que já estejam definidas no shell ou no `.env`: nenhuma conversa é enviada para a nuvem sem escolha explícita. Para habilitar tracing, defina `TRIAGE_ALLOW_TRACING=1`.
