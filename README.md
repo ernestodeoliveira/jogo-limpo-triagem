@@ -150,6 +150,11 @@ Racional completo em `docs/DECISIONS.md`.
 - Entradas do usuário tratadas como dados, nunca interpoladas em prompts de sistema (mitigação de prompt injection).
 - Respostas fora do formato são rejeitadas com re-pergunta (máx. 3 tentativas por item).
 - Tracing LangSmith/LangChain desabilitado por padrão pelo CLI (`LANGSMITH_TRACING`, `LANGCHAIN_TRACING_V2`, `LANGSMITH_TRACING_V2` e `LANGCHAIN_TRACING`), mesmo que já estejam definidas no shell ou no `.env`: nenhuma conversa é enviada para a nuvem sem escolha explícita. Para habilitar tracing, defina `TRIAGE_ALLOW_TRACING=1`.
+- Proveniência do modelo local (modo LLM real): a execução é 100% local, nenhum dado sai da máquina. Pesos baixados do Hugging Face, repositório `mlx-community/Qwen3.6-35B-A3B-4bit`, revisão `38740b847e4cb78f352aba30aa41c76e08e6eb46`, em 12/07/2026; servidos pelo oMLX 0.5.1 (build 1878), aplicativo macOS com API OpenAI-compatible em `http://localhost:8000/v1`. O servidor exige token Bearer local, fornecido via `OPENAI_API_KEY`; o valor nunca é versionado. SHA-256 dos 4 shards de pesos, computados localmente em 18/07/2026 com `shasum -a 256`:
+  - `model-00001-of-00004.safetensors`: `09f3e6ecb0b7af6e6a38bc8169a134c821b0924c2679b2bb8f4426ad38d032b8`
+  - `model-00002-of-00004.safetensors`: `31dcdb1c49eebdb1505bd14e3cb33f9cf900bd2546b638f2464694ae763a033f`
+  - `model-00003-of-00004.safetensors`: `3e66de06a1f03dade16a612a368cfce4a4c9caa4efd7d28185454384082cec03`
+  - `model-00004-of-00004.safetensors`: `a5d0cf03519c26f8b506df6b0ba60526e5c08c8cea22d0c21ce92950e58a5422`
 
 ## 12. Referências e atribuição
 

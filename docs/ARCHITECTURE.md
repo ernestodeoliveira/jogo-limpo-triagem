@@ -148,9 +148,12 @@ Todos rodam sem chave de API (fakes injetados por env/fixture, como no repo de r
 
 | Variável | Uso |
 |---|---|
-| `GOOGLE_API_KEY` | Gemini via `langchain[google-genai]` (opcional se offline) |
 | `TRIAGE_FAKE_LLM` | `1` = fakes determinísticos em CLI e testes |
+| `TRIAGE_LLM_BASE_URL` | URL do endpoint local OpenAI-compatible (ex. `http://localhost:8000/v1`); obrigatória no modo LLM real |
+| `TRIAGE_LLM_MODEL` | Nome do modelo servido pelo endpoint (ex. `Qwen3.6-35B-A3B-4bit`); obrigatória no modo LLM real |
+| `OPENAI_API_KEY` | Token Bearer local do endpoint, opcional conforme o servidor (o cliente usa um placeholder quando ausente) |
 | `TRIAGE_REPORTS_DIR` | Default `reports/` |
+| `TRIAGE_ALLOW_TRACING` | `1` = permite tracing LangSmith/LangChain, que o CLI desabilita por padrão |
 
 ## 10. Layout do código
 

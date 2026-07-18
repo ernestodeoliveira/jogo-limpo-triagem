@@ -38,7 +38,7 @@ Padrões que valem para o projeto inteiro, independentes de funcionalidade:
 
 ## 5. Requisitos não funcionais
 
-- **RNF-01 Segredos**: nenhuma chave no repositório; `.env.example` traz apenas os nomes das variáveis de configuração (`TRIAGE_FAKE_LLM`, `TRIAGE_LLM_BASE_URL`, `TRIAGE_LLM_MODEL`, `TRIAGE_REPORTS_DIR`); `OPENAI_API_KEY` é suportada como token Bearer opcional para endpoints locais que exigem autenticação, sem valor versionado; `.gitignore` cobre `.env`.
+- **RNF-01 Segredos**: nenhuma chave no repositório; `.env.example` traz apenas os nomes das variáveis de configuração, sem valores (`TRIAGE_FAKE_LLM`, `TRIAGE_LLM_BASE_URL`, `TRIAGE_LLM_MODEL`, `OPENAI_API_KEY`, `TRIAGE_REPORTS_DIR`); `OPENAI_API_KEY` é o token Bearer local, opcional conforme o endpoint; `.gitignore` cobre `.env`.
 - **RNF-02 Modo offline**: `TRIAGE_FAKE_LLM=1` executa CLI e testes com FakeLLM determinístico, sem rede e sem chave.
 - **RNF-03 Injeção**: conteúdo do usuário nunca vai para prompt de sistema; LLM de fallback recebe a resposta como dado com saída restrita a `Literal[0,1,2,3]`.
 - **RNF-04 Testes**: `uv run pytest` verde sem chave de API; cobertura dos caminhos críticos (score, parsing, crise, roteamento, relatório).
