@@ -1925,3 +1925,132 @@ segurança confirmou o diff docs-only e nenhum achado, com todas as afirmações
 verificadas contra o código). `uv run pytest` verde antes de cada commit (378 testes offline,
 15 deselected no tier `real_llm`; nenhuma chamada ao endpoint real na sessão) e
 `uvx ruff check`/`uvx ruff format --check` limpos. **PR #27**.
+
+### I-013: Implementação do fechamento do v0.1, T-19 a T-24 (Claude Code, 18/07)
+
+```text
+# Contexto
+Este é o repositório "jogo-limpo-triagem" (github.com/ernestodeoliveira/jogo-limpo-triagem):
+protótipo do Jogo Limpo Lab, agente de triagem de risco de jogo baseado no questionário PGSI,
+construído com LangGraph. Estado em 15/07/2026: T-01 a T-18 completos; CI com branch protection
+(check `tests`); OWASP auditado (I-006) com delta verificado (I-012); 378 testes offline sempre
+verdes + 15 no tier opt-in real_llm; risco residual do parser aceito. O plano de fechamento do
+v0.1 está em docs/RELEASE_PLAN.md (sessão P-009, ver docs/prompts.md): backlog refinado T-19 a
+T-24 com todas as decisões já tomadas. Freeze v0.1 em 19/07, entrega escolar em 20/07/2026.
+
+Decisões já tomadas (NÃO redecida, aplique): (a) T-19 registra S-001 (CLASSIFY_SYSTEM_PROMPT,
+src/triagem/classify.py) e S-002 (PARSE_SYSTEM_PROMPT, src/triagem/parsing.py) verbatim numa
+nova seção "2. Prompts de sistema" do docs/prompts.md, com nota "sem persona por design";
+(b) T-20 grava os transcritos com o LLM real (oMLX local), com aprovação explícita do usuário
+ANTES de qualquer chamada ao endpoint; fallback offline rotulado se indisponível; (c) T-22 é
+docs/slides.md estilo Marp com 2 slides; (d) PR-1 = T-19+T-20+T-21+T-22, PR-2 = evidência do
+T-23 + registro I-013 (+ correções se houver), T-24 = tag v0.1 sem PR com aprovação na hora;
+(e) T-23 = clone novo em diretório temporário sem .env, uv sync, uv run pytest, CLI offline
+cobrindo aceites 1-3, README §6 cronometrado, checklist dos 6 aceites do PRD §6 como evidência;
+(f) O-05 coleta versão do oMLX, fonte e checksum dos pesos com o usuário na sessão; fallback de
+redação se indisponível. Nota de precisão: o backlog T-19 a T-24 está em docs/PLAN.md seção 3
+("Backlog ordenado"), não nas seções 4 ou 5.
+
+Requisitos inegociáveis: `uv run pytest` (sem marcador) e o CI continuam 100% verdes, offline e
+sem chave de API; documentação em PT-BR, código e identificadores em inglês; não usar travessão
+longo em nenhum texto; Conventional Commits 1.0.0 em inglês; nenhum token ou segredo em
+transcritos ou commits (conferir os transcritos antes de commitar). O .env não é auto-carregado:
+exportar TRIAGE_LLM_BASE_URL, TRIAGE_LLM_MODEL e OPENAI_API_KEY (token Bearer local) no shell
+da execução real. Antes de CADA PR: code review e security review são obrigatórios mesmo
+docs-only (instrução permanente); achado Important+ corrige e RODA AS DUAS DE NOVO sobre o
+estado atualizado antes de prosseguir. F-02 só fecha de fato quando o T-21 substituir os
+placeholders do README §7/§8 pelos trechos reais gravados no T-20; não marque F-02 fechado
+antes disso.
+
+# Papel
+Atue como engenheiro(a) de release sênior executando o fechamento do v0.1 conforme
+docs/RELEASE_PLAN.md, com subagent-driven-development onde fizer sentido (tarefas
+independentes: T-19, T-22) e execução direta onde há interação com o usuário (T-20 real).
+
+# Tarefa
+1. Leia docs/RELEASE_PLAN.md (backlog, decisões, sequência) e confira o estado do repo.
+2. PR-1 (worktree .worktrees/v01-closeout, branch docs/v01-closeout), na ordem:
+   T-19 (prompts.md S-001/S-002 + nota + renumeração; commit
+   `docs: update prompt log with final system prompts`);
+   T-20 (peça aprovação para subir/chamar o oMLX; grave baixo, moderado e crise em
+   examples/risco-baixo.md, examples/risco-moderado.md, examples/crise.md com cabeçalho de
+   data/modo/modelo; copie o relatório de uma execução para reports/sample-triagem-*.md/.json;
+   commit `docs: add execution transcripts and sample report`);
+   T-21 (README §4 diagrama com retry_offer/abort_node, §6 endpoint local sem Gemini, §7/§8
+   trechos reais, §10/§11 O-08, §11/§12 O-05 com os dados coletados com o usuário, §12 redação
+   PGSI nova, §13 árvore real; PRD RNF-01 e §8; ARCHITECTURE §9; DECISIONS D-07; OWASP §4 marca
+   O-05/O-08 implementados; commits `docs: finalize readme with real examples`,
+   `docs: document local model provenance and endpoint auth`,
+   `docs: document accepted storage limits`);
+   T-22 (docs/slides.md Marp, 2 slides: problema/processo/proposta e
+   entrada/saída/ferramentas/fluxo; commit `docs: add presentation outline`).
+   Gates, PR, CI verde, confirmar merge com o usuário, remover worktree.
+3. T-23 após o merge: clone novo em diretório temporário (sem .env), uv sync, uv run pytest,
+   CLI offline ponta a ponta (aceites 1-3), README §6 cronometrado (aceite 5), aceite 6 no
+   repo; monte o checklist dos 6 aceites com saídas resumidas.
+4. PR-2 (worktree novo): registro I-013 em docs/prompts.md (prompt + Resultado com o checklist
+   do T-23) + correções do T-23 se houver (`chore: final acceptance review fixes`). Gates,
+   PR, CI verde, confirmar merge.
+5. T-24 com aprovação explícita do usuário na hora: na main atualizada com CI verde, criar tag
+   anotada v0.1 (mensagem `chore(release): v0.1`) e push da tag; declarar o congelamento
+   (nenhum commit após a tag até a nota).
+6. Atualize a memória: marcar o prompt I-013 como executado, atualizar o próximo passo
+   (pós-v0.1: B-17 a B-21 ou fork Labs).
+
+# Formato
+Worktrees isolados em .worktrees/ (um por PR), fluxo de PR estabelecido. `uv run pytest` 100%
+verde offline e `uvx ruff check` + `uvx ruff format --check` antes de cada commit. Ao final,
+imprima no chat: checklist dos 6 aceites, links dos PRs e da tag v0.1, e as pendências que
+ficaram fora do repo (submissão no AVA, horário 22h vs 15h a confirmar com o professor).
+```
+
+**Resultado**: fechamento executado em dois PRs mais a tag, conforme `docs/RELEASE_PLAN.md`. **PR
+#29** (T-19 a T-22, squash): seção "2. Prompts de sistema" com S-001/S-002 verbatim (igualdade com o
+código verificada programaticamente pelo implementador e por revisor independente) e nota "sem
+persona por design"; três transcritos reais gravados com aprovação explícita do usuário contra o
+endpoint local (oMLX 0.5.1 build 1878, modelo `mlx-community/Qwen3.6-35B-A3B-4bit`, revisão HF
+`38740b84`, `http://localhost:8000/v1`) em `examples/risco-baixo.md` (2/27),
+`examples/risco-moderado.md` (5/27, com a resposta livre "de vez em quando acontece" interpretada
+pelo fallback LLM real) e `examples/crise.md` (gate de crise disparado na pergunta 3), mais o
+relatório de amostra versionado em `reports/sample-triagem-*.md`/`.json`; README (§4 diagrama real
+com `retry_offer`/`abort_node`/crise no ciclo, §6 endpoint local sem Gemini, §7/§8 trechos reais,
+§10/§11 O-08, §11 proveniência O-05 com os 4 SHA-256 dos pesos, §12 redação nova do PGSI, §13 árvore
+real), PRD RNF-01/§8, ARCHITECTURE §3/§9, DECISIONS D-07, OWASP §4 (O-05 e O-08 marcados
+implementados) e `.env.example` (ganhou `OPENAI_API_KEY=`) atualizados; `docs/slides.md` Marp com
+exatamente 2 slides, validados por renderização (marp-cli). Gates do PR-1: revisões de spec e
+qualidade por tarefa (subagentes independentes; achados Important corrigidos e re-verificados:
+aresta duplicada `finalize --> END` no diagrama, sigla PGSI expandida nos slides, YAML do
+front-matter); code review holístico em seguida devolveu 3 achados deduplicados, 2 corrigidos e
+re-verificados contra o código (README §12 fiel à saída real do agente, que cita "gov.br"; README §6
+sem a afirmação categórica sobre auto-load do `.env`) e 1 aceito por design (as linhas O-05/O-08
+citam a sessão I-013, cujo registro é exatamente esta entrada, fechada pelo PR #30 antes da tag);
+security review sem achados (varredura de segredos e PII em todas as linhas adicionadas, incluindo
+transcritos e relatório; mudanças em `src/` confirmadas como somente comentários); nenhuma
+dependência alterada.
+
+T-23 (protocolo de máquina limpa em 18/07: clone novo do GitHub em diretório temporário, sem `.env`,
+confirmado ausente), checklist dos 6 aceites do PRD §6:
+
+1. **Triagem offline ponta a ponta grava relatório**: `TRIAGE_FAKE_LLM=1 uv run python -m
+   triagem.cli` no clone, sessão completa com 9 respostas válidas; resultado "risco baixo, pontuação
+   2 de 27" e relatório gravado em `reports/triagem-c89fb4ac...-20260718T150736.md`/`.json`. PASSOU.
+2. **Resposta inválida re-pergunta; três seguidas ofertam encerrar**: três respostas "banana" na
+   pergunta 1 geraram re-pergunta com a dica da escala nas duas primeiras e, na terceira, a oferta
+   "tentar essa pergunta de novo ou prefere encerrar"; "encerrar" produziu o fechamento educado com
+   CVV 188. PASSOU.
+3. **Frase de crise no meio do questionário aciona o gate imediatamente**: "não aguento mais, isso
+   está acabando comigo" na pergunta 3 interrompeu o questionário com a mensagem de crise (CVV 188,
+   SAMU 192), sem gravar relatório. PASSOU.
+4. **`uv run pytest` verde em máquina limpa sem `.env`**: `uv sync` + `uv run pytest -v` no clone:
+   378 passed, 15 deselected, 2,88s. PASSOU.
+5. **README permite rodar tudo em menos de 5 minutos**: sequência literal do README §6 (clone, `uv
+   sync`, CLI offline ponta a ponta, suíte completa) cronometrada em 9 segundos no total. PASSOU.
+6. **`docs/prompts.md` contém os prompts de planejamento e os de sistema finais**: P-000 a P-009 e
+   S-001/S-002 conferidos no clone. PASSOU.
+
+O clone limpo não revelou nenhum passo quebrado do README nem teste falhando, então o commit
+opcional `chore: final acceptance review fixes` não foi necessário. Este registro é o conteúdo do
+**PR #30** (mesmos gates de code review + security review antes de abrir); após o merge com o check
+`tests` verde na `main`, T-24 cria a tag anotada `v0.1` (mensagem `chore(release): v0.1`) com
+aprovação explícita do usuário no momento do push, seguida do congelamento (nenhum commit até a nota
+ser recebida).
