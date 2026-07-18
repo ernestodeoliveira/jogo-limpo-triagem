@@ -38,7 +38,7 @@ Padrões que valem para o projeto inteiro, independentes de funcionalidade:
 
 ## 5. Requisitos não funcionais
 
-- **RNF-01 Segredos**: nenhuma chave no repositório; `.env.example` apenas com `GOOGLE_API_KEY=`; `.gitignore` cobre `.env`.
+- **RNF-01 Segredos**: nenhuma chave no repositório; `.env.example` traz apenas os nomes das variáveis de configuração, sem valores (`TRIAGE_FAKE_LLM`, `TRIAGE_LLM_BASE_URL`, `TRIAGE_LLM_MODEL`, `OPENAI_API_KEY`, `TRIAGE_REPORTS_DIR`); `OPENAI_API_KEY` é o token Bearer local, opcional conforme o endpoint; `.gitignore` cobre `.env`.
 - **RNF-02 Modo offline**: `TRIAGE_FAKE_LLM=1` executa CLI e testes com FakeLLM determinístico, sem rede e sem chave.
 - **RNF-03 Injeção**: conteúdo do usuário nunca vai para prompt de sistema; LLM de fallback recebe a resposta como dado com saída restrita a `Literal[0,1,2,3]`.
 - **RNF-04 Testes**: `uv run pytest` verde sem chave de API; cobertura dos caminhos críticos (score, parsing, crise, roteamento, relatório).
@@ -71,6 +71,6 @@ Padrões que valem para o projeto inteiro, independentes de funcionalidade:
 | Risco | Mitigação |
 |---|---|
 | Ciclo com `interrupt` instável no CLI | Plano B por turno (`invoke` por mensagem com mesmo `thread_id`); decidir dia 14 após 2 h de tentativa |
-| Quota/latência da API Gemini | Modo offline como caminho principal de demo; LLM real só na gravação final de exemplos |
+| Indisponibilidade/latência do endpoint local (oMLX) | Modo offline como caminho principal de demo; LLM real só na gravação final de exemplos |
 | Escopo crescer (mock API, web) | Extensões só após critérios de aceite 1-6 fechados |
 | Documentação incompleta na publicação | Revisão final contra os critérios de aceite no dia 18 |

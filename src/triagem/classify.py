@@ -8,7 +8,7 @@ from triagem.state import TriageState
 
 Intent = Literal["iniciar", "responder", "duvida", "fora_dominio"]
 
-# Static PT-BR system prompt; candidate for the S-0xx prompt log at T-19.
+# Static PT-BR system prompt. Logged as S-001 in docs/prompts.md (T-19).
 # The last sentence treats user content as data, never instructions
 # (prompt injection mitigation, ARCHITECTURE section 7).
 CLASSIFY_SYSTEM_PROMPT = (

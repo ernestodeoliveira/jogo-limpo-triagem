@@ -111,7 +111,7 @@ def majority_vote(values: list[int | None]) -> int | None:
     return winner if count > len(values) / 2 else None
 
 
-# Static PT-BR system prompt; candidate for the S-0xx prompt log at T-19.
+# Static PT-BR system prompt. Logged as S-002 in docs/prompts.md (T-19).
 # The last sentence treats user content as data, never instructions
 # (prompt injection mitigation, ARCHITECTURE section 7), mirroring
 # CLASSIFY_SYSTEM_PROMPT in classify.py.

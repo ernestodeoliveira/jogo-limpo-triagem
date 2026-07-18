@@ -40,7 +40,7 @@ Formato curto: Decisão / Racional / Trade-off aceito. Alimenta a seção "princ
 
 ## D-07: PGSI como instrumento, com atribuição e sem paráfrase
 
-**Decisão**: usar os 9 itens da versão validada em português em `data/pgsi.json`, com citação (Ferris & Wynne, 2001, CPGI); não reescrever itens.
+**Decisão**: usar os 9 itens da versão brasileira com adaptação transcultural e validade de conteúdo (Moura et al., 2026) em `data/pgsi.json`, com citação (Ferris & Wynne, 2001, CPGI); não reescrever itens.
 **Racional**: a validade do instrumento está na redação original; parafrasear inventaria um questionário sem validade.
 **Trade-off**: nenhum relevante.
 
