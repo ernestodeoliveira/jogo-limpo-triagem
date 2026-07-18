@@ -36,13 +36,14 @@ flowchart TD
     START --> safety_gate
     safety_gate -- crise --> crisis_node --> finalize
     safety_gate -- ok --> classify_intent
-    classify_intent -- fora_dominio --> fallback --> finalize
+    classify_intent -- fora_dominio --> fallback_node --> finalize
     classify_intent -- duvida --> info_node --> finalize
     classify_intent -- iniciar/responder --> ask_question
     ask_question -- "interrupt()" --> validate_answer
     validate_answer -- crise --> crisis_node
     validate_answer -- inválida (attempts < 3) --> ask_question
     validate_answer -- inválida (attempts == 3) --> retry_offer
+    validate_answer -- inválida (attempts == 3, 5º ciclo de retry) --> abort_node
     retry_offer -- "interrupt()" --> retry_offer
     retry_offer -- crise --> crisis_node
     retry_offer -- tentar de novo --> ask_question
@@ -153,7 +154,7 @@ Todos rodam sem chave de API (fakes injetados por env/fixture, como no repo de r
 | `TRIAGE_LLM_MODEL` | Nome do modelo servido pelo endpoint (ex. `Qwen3.6-35B-A3B-4bit`); obrigatória no modo LLM real |
 | `OPENAI_API_KEY` | Token Bearer local do endpoint, opcional conforme o servidor (o cliente usa um placeholder quando ausente) |
 | `TRIAGE_REPORTS_DIR` | Default `reports/` |
-| `TRIAGE_ALLOW_TRACING` | `1` = permite tracing LangSmith/LangChain, que o CLI desabilita por padrão |
+| `TRIAGE_ALLOW_TRACING` | `1` = permite tracing LangSmith/LangChain, que o CLI desabilita por padrão; deliberadamente fora do `.env.example`, para que o opt-in de privacidade seja sempre consciente |
 
 ## 10. Layout do código
 

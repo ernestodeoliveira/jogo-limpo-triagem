@@ -26,7 +26,7 @@ A solução mantém estado entre turnos (checkpointer com `thread_id`), decide o
 ```mermaid
 flowchart TD
     START --> safety_gate
-    safety_gate -- crise detectada --> crisis_node --> finalize --> END
+    safety_gate -- crise detectada --> crisis_node --> finalize
     safety_gate -- ok --> classify_intent
     classify_intent -- fora_dominio --> fallback_node --> finalize
     classify_intent -- duvida --> info_node --> finalize
@@ -36,8 +36,8 @@ flowchart TD
     validate_answer -- inválida, tentativas < 3 --> ask_question
     validate_answer -- válida e i < 9 --> ask_question
     validate_answer -- válida e i == 9 --> score_node
-    validate_answer -- 3ª tentativa inválida --> retry_offer
-    validate_answer -- 3ª inválida no 5º ciclo de retry --> abort_node
+    validate_answer -- inválida, tentativas == 3 --> retry_offer
+    validate_answer -- inválida, tentativas == 3 e 5º ciclo --> abort_node
     retry_offer -- crise detectada --> crisis_node
     retry_offer -- tentar de novo --> ask_question
     retry_offer -- encerrar --> abort_node
@@ -66,8 +66,9 @@ cd jogo-limpo-triagem
 uv sync
 
 # Modo 1: com LLM real, via qualquer servidor local OpenAI-compatible
-# (ex. oMLX, LM Studio). O .env/.env.example servem só de referência dos
-# nomes de variável: NÃO são carregados automaticamente, exporte no shell.
+# (ex. oMLX, LM Studio). O .env/.env.example servem só de referência para os
+# nomes das variáveis: o projeto não instala python-dotenv, então nada é
+# carregado automaticamente; exporte as variáveis no shell.
 export TRIAGE_LLM_BASE_URL=http://localhost:8000/v1   # endpoint local
 export TRIAGE_LLM_MODEL=Qwen3.6-35B-A3B-4bit           # nome do modelo servido
 export OPENAI_API_KEY=algum-token                     # só se o endpoint exigir Bearer
@@ -161,7 +162,7 @@ Racional completo em `docs/DECISIONS.md`.
 
 - PGSI: itens do Canadian Problem Gambling Index (Ferris & Wynne, 2001), instrumento de uso livre com atribuição. Os itens em `data/pgsi.json` seguem a versão brasileira com adaptação transcultural e validade de conteúdo (Moura et al., 2026), com fonte citada no próprio arquivo.
 - Padrões de LangGraph (structured output, fakes de teste, checkpointer, interrupt) inspirados no repositório `stack-sentinel-senai`, de Caio Prá, usado como referência de padrões.
-- Recursos de apoio citados pelo agente: gov.br/autoexclusaoapostas, CVV 188, rede CAPS/SUS.
+- Recursos de apoio citados pelo agente: Plataforma centralizada de autoexclusão de apostas (o agente cita gov.br; endereço direto: gov.br/autoexclusaoapostas), CVV 188, rede CAPS/SUS.
 
 ## 13. Estrutura do repositório
 
